@@ -11,7 +11,7 @@ Paper: Zhang, Kraska, Khattab, [*Recursive Language Models*](https://arxiv.org/a
 | [Getting started](getting-started.md) | Install, Docker image, first `rlm ask` / `rlm research` / library call |
 | [Concepts](concepts.md) | What an RLM is, why it is not ReAct/RAG/compaction, product invariants |
 | [Architecture](architecture.md) | Host vs container, data flow, security boundary |
-| [CLI](cli.md) | `ask`, `research`, `complete`, flags, dry-run, exit codes |
+| [CLI](cli.md) | `ask`, `research`, `complete`, `report`, flags, dry-run, exit codes |
 | [Python API](python-api.md) | `RLM.completion`, `ask_repo`, `research`, return types |
 | [Configuration](configuration.md) | TOML/YAML keys, discovery, precedence, auth |
 | [REPL](repl.md) | Builtins, `FINAL_VAR`, reserved names, Docker policy, IPC |

@@ -31,6 +31,7 @@ uv run rlm ask ./pytorch -- "Where is autocast implemented, and how does it inte
 uv run rlm research ./papers -- "Where do these papers disagree about context rot?"
 uv run rlm complete --context-file haystack.txt -- "Find the needle."
 uv run rlm ask ./repo --dry-run -- "preview the manifest and prompt; no API, no container"
+uv run rlm report .rlm/logs   # rebuild the static HTML timeline for the latest run
 ```
 
 Python:

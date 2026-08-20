@@ -69,6 +69,7 @@ Invariants covered today:
 | `test_repo_env.py` | Ignore rules, grep/read, path safety |
 | `test_corpus_env.py` | Ingest, search/slice, distractors |
 | `test_docker_repl.py` | Marked: no key in container, no public net, mount works |
+| `test_report.py` | Static `report.html`; XSS escaped; `rlm report` |
 
 ## Fixtures
 

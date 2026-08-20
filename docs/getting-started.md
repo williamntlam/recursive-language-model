@@ -53,7 +53,7 @@ uv run rlm complete --context-file haystack.txt -- "Find the needle."
 uv run rlm ask ./repo --dry-run -- "preview the manifest and prompt"
 ```
 
-Stdout is the answer. Stderr gets a one-line usage footer (`tokens`, estimated `cost`, iterations, subcalls, trajectory path).
+Stdout is the answer. Stderr gets a one-line usage footer (`tokens`, estimated `cost`, iterations, subcalls, trajectory path, `report.html`). Open that HTML file in a browser to see the recursion timeline. Rebuild it later with `uv run rlm report .rlm/logs`.
 
 ## Python
 

@@ -10,6 +10,16 @@ Each successful or failed run that reaches `TrajectoryLogger` writes:
   events.jsonl       # one record per iteration / subcall / error
   answer.txt         # written on successful finish (depth 0)
   usage.json         # tokens, cost, iterations, subcalls
+  report.html        # static timeline; written after the run (also on abort)
+```
+
+Open `report.html` in a browser. It is a self-contained file (inline CSS, no network). Recursion depth is left indent; parent prompt tokens are a bar chart so you can see whether `hist` is rotting.
+
+Regenerate without re-running:
+
+```bash
+uv run rlm report .rlm/logs
+uv run rlm report .rlm/logs/<run-id>
 ```
 
 `log_dir` is configurable (default `.rlm/logs`). The directory is gitignored via `.rlm/`.
@@ -47,7 +57,7 @@ Child RLMs **share** the parent's logger directory (events interleave; `depth` d
 On success, stderr:
 
 ```
-# tokens=<prompt>+<completion> cost=$<usd> iters=<n> subcalls=<n> log=<trajectory dir>
+# tokens=<prompt>+<completion> cost=$<usd> iters=<n> subcalls=<n> log=<trajectory dir> html=<trajectory dir>/report.html
 ```
 
 `cost` is four decimal places, or `$?` if `usage.cost_usd` is `None`.

@@ -6,12 +6,13 @@ The process loads `.env` first (`rlm.envfile.load_dotenv`), without overriding v
 
 ## Syntax
 
-The user query is everything after `--`. If `--` is missing or the query is empty, the CLI exits `4`.
+For `ask` / `research` / `complete`, the user query is everything after `--`. If `--` is missing or the query is empty, the CLI exits `4`. `report` does not take a query.
 
 ```
 rlm ask <path> -- <query>
 rlm research <path> -- <query>
 rlm complete --context-file <file> -- <query>
+rlm report [path]
 ```
 
 Examples:
@@ -32,6 +33,9 @@ uv run rlm ask ./repo --config ./rlm.yaml -- "..."
 | `ask <path>` | Local directory as `repo` | `RLM().ask_repo(path, query)` |
 | `research <path>` | Directory (or file) as `corpus` | `RLM().research(path, query)` |
 | `complete --context-file <file>` | File contents as `context` | `RLM().completion(query, text)` |
+| `report [path]` | Write `report.html` for a trajectory | `write_report(resolve_run_dir(path))` |
+
+`report` accepts a run directory, an `events.jsonl` file, or a log parent (default `.rlm/logs`) and picks the latest child. It prints the HTML path on stdout. No API, no container.
 
 There is no `--env local`. The product REPL is Docker. There is no `--api-key` (keys show up in shell history).
 
@@ -78,7 +82,7 @@ On success:
 - **stderr:** usage footer
 
 ```
-# tokens=1234+56 cost=$0.0123 iters=4 subcalls=12 log=.rlm/logs/20260820-180000-abcd1234
+# tokens=1234+56 cost=$0.0123 iters=4 subcalls=12 log=.rlm/logs/20260820-180000-abcd1234 html=.rlm/logs/20260820-180000-abcd1234/report.html
 ```
 
 `cost` is `$` plus four decimals, or `$?` if cost is unknown.

@@ -207,6 +207,11 @@ class Runtime:
                 import shutil
 
                 shutil.rmtree(workspace, ignore_errors=True)
+            if self.depth == 0:
+                try:
+                    self.logger.write_html()
+                except OSError:
+                    pass
 
         usage = Usage(
             prompt_tokens=self.budget.prompt_tokens,

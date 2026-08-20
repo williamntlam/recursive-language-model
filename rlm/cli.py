@@ -1,4 +1,4 @@
-"""CLI: rlm ask | rlm research | rlm complete. No --env local. No --api-key."""
+"""CLI: rlm ask | rlm research | rlm complete | rlm report. No --env local. No --api-key."""
 
 from __future__ import annotations
 
@@ -20,6 +20,7 @@ from rlm.errors import (
     ReplErrorsExhausted,
     StartupError,
 )
+from rlm.logging.html import resolve_run_dir, write_report
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -53,6 +54,17 @@ def _build_parser() -> argparse.ArgumentParser:
     complete = sub.add_parser("complete", help="Generic string context.", parents=[common])
     complete.add_argument("--context-file", required=True)
 
+    report = sub.add_parser(
+        "report",
+        help="Write a static HTML view of a trajectory directory.",
+    )
+    report.add_argument(
+        "path",
+        nargs="?",
+        default=".rlm/logs",
+        help="Run directory, events.jsonl, or log parent (latest run). Default: .rlm/logs",
+    )
+
     return p
 
 
@@ -68,7 +80,8 @@ def _print_usage(out) -> None:
     cost = f"${u.cost_usd:.4f}" if u.cost_usd is not None else "$?"
     print(
         f"# tokens={u.prompt_tokens}+{u.completion_tokens} cost={cost} "
-        f"iters={u.iterations} subcalls={u.subcalls} log={out.trajectory}",
+        f"iters={u.iterations} subcalls={u.subcalls} log={out.trajectory} "
+        f"html={out.trajectory / 'report.html'}",
         file=sys.stderr,
     )
 
@@ -83,6 +96,15 @@ def main(argv: list[str] | None = None) -> int:
     except SystemExit as e:
         code = e.code if isinstance(e.code, int) else 4
         return code if code != 2 else 4  # argparse's 2 → our 4 (user error)
+
+    if args.cmd == "report":
+        try:
+            html = write_report(resolve_run_dir(args.path))
+            print(html)
+            return 0
+        except FileNotFoundError as e:
+            print(e, file=sys.stderr)
+            return 4
 
     if not query:
         print(

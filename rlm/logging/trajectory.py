@@ -67,3 +67,9 @@ class TrajectoryLogger:
             json.dumps(_safe(payload), indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+        self.write_html()
+
+    def write_html(self):
+        from rlm.logging.html import write_report
+
+        return write_report(self.dir)

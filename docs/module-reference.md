@@ -61,6 +61,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | Module | Role |
 |---|---|
 | `trajectory.py` | `TrajectoryLogger`, `redact` |
+| `html.py` | `write_report`, `resolve_run_dir` — static `report.html` |
 
 ## `docker/`
 
