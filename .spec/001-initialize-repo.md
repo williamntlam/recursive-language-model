@@ -53,7 +53,7 @@ This repo specializes that idea to two workloads:
    - a local (or cloned) **code repository**
    - a **research corpus** (papers, notes, web dumps, markdown)
 6. Expose the system as a Python library and a CLI that a human can use for real work.
-7. **Never send an LM prompt over 100,000 tokens or 150 instructions.** The runtime fails closed (error to REPL or abort), and these ceilings cannot be raised by config.
+7. **Never send an LM prompt of 100,000 tokens or more, or more than 150 instructions.** Parent and children alike. Recursion must slice until the piece fits. The runtime fails closed; these ceilings cannot be raised by config.
 8. Run every real REPL cell inside Docker. The host never `exec`s model code.
 
 ### 3.2 Quality goals
@@ -61,7 +61,7 @@ This repo specializes that idea to two workloads:
 - No silent dropping of context. If the model did not look at a file or document, that is an explicit choice visible in the trajectory, not a summarizer's accident.
 - Trajectories are inspectable: every code cell, stdout snippet, sub-call, and cost is logged.
 - Cost and latency are first-class. Recursion must be budgeted (depth, iterations, USD, tokens, wall clock).
-- **Hard prompt ceilings (not overridable upward):** no LM call may receive more than **100,000 tokens**, and no prompt payload may contain more than **150 instructions**. These are anti-rot constraints, not suggestions. See §7.5.
+- **Hard prompt ceilings (not overridable upward):** no LM call — parent or child — may receive **100,000 or more tokens**, and no prompt payload may contain more than **150 instructions**. These are anti-rot constraints, not suggestions. See §7.5.
 - Default path is useful on a laptop with an `OPENAI_API_KEY` and a running **Docker** engine. The REPL always executes in a container.
 
 ### 3.3 Non-goals (v0)
@@ -116,7 +116,7 @@ An apparently similar scaffold that (a) puts `P` in the chat, (b) verbalizes a f
 
 ### 4.3 What the root is allowed to see
 
-Each REPL turn returns only **constant-size metadata** about stdout: a short prefix, a length, maybe a hash. Long strings stay in variables. If stdout is huge, the model is forced to slice it in code rather than reread it in the transcript. That constraint is load-bearing; relaxing it reintroduces rot. Independently, the full message list sent to any LM must stay ≤ 100k tokens with ≤ 150 instructions (§7.5).
+Each REPL turn returns only **constant-size metadata** about stdout: a short prefix, a length, maybe a hash. Long strings stay in variables. If stdout is huge, the model is forced to slice it in code rather than reread it in the transcript. That constraint is load-bearing; relaxing it reintroduces rot. Independently, the full message list sent to any LM (parent or child) must stay **< 100k tokens** with ≤ 150 instructions (§7.5).
 
 ### 4.4 Recursion depth
 
@@ -185,7 +185,7 @@ This is the paper's default path and the regression surface for the core runtime
 
 ## 6. Design principles
 
-1. **Context is data, not prompt.** If a string might be large, it is a variable. Prompts to any LM (root or leaf) must stay under **100k tokens** and **150 instructions**. Exceeding either cap is a runtime error, never a send.
+1. **Context is data, not prompt.** If a string might be large, it is a variable. Prompts to any LM (parent or child) must stay **strictly under 100k tokens** and **150 instructions**. 100k or more is a runtime error, never a send. Recursion exists so this is always possible: slice until the piece fits.
 2. **The model chooses the decomposition.** Do not hard-code chunk sizes or retrieval pipelines as the only strategy. Provide primitives (slice, grep, tree, parse) and let the root write the strategy. Optional heuristics may be offered as *tools*, not as a mandatory DAG.
 3. **Truncate observations, never the source.** Stdout shown to the model is capped. The underlying variable is not.
 4. **Budgets are hierarchical.** A child inherits *remaining* timeout / USD / tokens, not the original totals.
@@ -211,7 +211,7 @@ This is the paper's default path and the regression surface for the core runtime
 │  - history policy (metadata-only observations)                  │
 │  - recursion (llm_query / rlm_query / batched)                  │
 │  - budgets (depth, iterations, $, tokens, time, errors)         │
-│  - prompt guard (≤100k tokens, ≤150 instructions per call)      │
+│  - prompt guard (<100k tokens, ≤150 instructions per call)      │
 │  - trajectory logger                                            │
 └───────────────┬─────────────────────────────┬───────────────────┘
                 │                             │
@@ -241,7 +241,7 @@ Hard ceilings (may be *lowered* by config, never raised):
 
 | Limit | Ceiling | Why |
 |---|---|---|
-| `max_prompt_tokens` | **100,000** | No single LM call — root or leaf — may ingest more than this |
+| `max_prompt_tokens` | **99,999** (`< 100_000`) | No single LM call — parent or child — may ingest 100k or more |
 | `max_instructions` | **150** | Instruction-following collapses past a short list of rules |
 
 Recommended v0 limits (overridable, including upward unless they would violate the ceilings):
@@ -360,33 +360,43 @@ Never append:
 - full file contents (those stay in variables; the model prints slices if it wants to see them)
 - full sub-call transcripts (return the child *answer string*, optionally a short metadata summary)
 
-If `hist` itself would exceed **100,000 tokens** on the next root call, **do not send**. Do not summarize the corpus. Stop with `PromptBudgetError` (CLI exit `2`) and keep REPL state inspectable so the user can continue from variables. Compacting the source data is how rot re-enters. Observation truncation exists so this abort should be rare; if it is common, `max_observation_chars` is too high.
+If `hist` itself would be **100,000 tokens or more** on the next parent call, **do not send**. Do not summarize the corpus. Stop with `PromptBudgetError` (CLI exit `2`) and keep REPL state inspectable so the user can continue from variables. Compacting the source data is how rot re-enters. Observation truncation exists so this abort should be rare; if it is common, `max_observation_chars` is too high.
 
-### 7.5 Hard prompt limits (100k tokens, 150 instructions)
+### 7.5 Hard prompt limits (<100k tokens, 150 instructions)
 
-These two numbers are **product invariants**. The backend must not issue an LM HTTP request that violates them. Config may set a *lower* `max_prompt_tokens` or `max_instructions`. Setting a higher value is a config error at startup (CLI exit `4`).
+These two numbers are **product invariants**. Recursion is how we keep them. The backend must not issue an LM HTTP request that violates them. Config may set a *lower* `max_prompt_tokens` or `max_instructions`. Setting a higher value is a config error at startup (CLI exit `4`).
 
 | Name | Hard ceiling | Applies to |
 |---|---|---|
-| `MAX_PROMPT_TOKENS` | `100_000` | Every call: root turn, `llm_query`, `rlm_query`, batched items each counted separately |
+| `MAX_PROMPT_TOKENS` | `< 100_000` | **Every** OpenAI call: parent/root turn, `llm_query`, `rlm_query`, each batched item on its own |
 | `MAX_INSTRUCTIONS` | `150` | The composed prompt payload for that same call |
 
-**100k is a ceiling, not a target.** The root should usually sit in the low thousands of tokens. Leaves should receive only the snippet they need. Hitting 100k means the history policy or a `llm_query` argument failed.
+**Decomposition invariant.** A 10M-token repo or corpus is allowed *as REPL data*. It is not allowed as anyone’s prompt. The parent never receives that blob. Recursive calls receive only slices the parent constructed in code. If a slice is still 100k tokens or larger, that call is **not sent**; the parent must cut it again. Therefore:
+
+- The parent’s context is always `< 100k` (in practice far smaller: metadata + truncated stdout + its own code).
+- Every child / leaf context is always `< 100k`.
+- No LM — parent or otherwise — is ever invoked with 100k or more input tokens.
+- Hitting the guard means decomposition failed, not that we “allow 100k.”
+
+**100k is a backstop, not a target.** The parent should sit in the low thousands of tokens. Leaves should receive only the snippet they need.
+
+This limit is on **input context of an LM call**, not on REPL memory and not on the final answer. `FINAL_VAR` may return a long string assembled in the container. That string is not prompt text unless some later `llm_query` tries to send it — and then the same `< 100k` rule applies.
 
 #### Token counting
 
 - Count **input tokens of the exact message list** about to be sent (system + developer + hist + the current user/query message). Do not count the bound REPL `context` unless it was actually copied into those messages.
 - Use `tiktoken` `cl100k_base` for the guard (OpenAI-native, deterministic in tests).
-- If OpenAI later reports a higher token count than our estimate, log it; still never *send* a payload we already counted over 100k.
+- Legal send: `count_tokens(messages) < 100_000`. Illegal: `>= 100_000`.
+- If OpenAI later reports a higher token count than our estimate, log it; still never *send* a payload we already counted at 100k or more.
 - Batched calls: each prompt in the batch is guarded on its own. A 200-item batch of 10k-token prompts is 200 legal calls, not one 2M-token call.
 
-**If a send would exceed 100k:**
+**If a send would be 100k tokens or more:**
 
 | Caller | Behavior |
 |---|---|
-| Root loop | Do not call the LM. Abort the completion with `PromptBudgetError`. Persist trajectory. |
-| `llm_query` / `rlm_query` | Do not call the LM. Return an error *string* into the REPL (`"Error: prompt is N tokens; max is 100000. Slice the argument."`) so the root can recover by slicing. One oversize leaf must not kill the whole batch (same per-item failure rule as §8.3). |
-| Prompt composition at startup | If the *static* system+domain prompt alone is > 100k (should be impossible if prompts stay small), refuse to start. |
+| Parent / root loop | Do not call the LM. Abort the completion with `PromptBudgetError`. Persist trajectory. Observation truncation exists so this abort should be rare. |
+| `llm_query` / `rlm_query` | Do not call the LM. Return an error *string* into the REPL (`"Error: prompt is N tokens; max is 99999. Slice the argument."`) so the parent can recover by slicing further. One oversize leaf must not kill the whole batch (same per-item failure rule as §8.3). |
+| Prompt composition at startup | If the *static* system+domain prompt alone is ≥ 100k (should be impossible if prompts stay small), refuse to start. |
 
 #### Instruction counting
 
@@ -542,7 +552,7 @@ rlm_query_batched(prompts: list[str], ...) -> list[str]
 SHOW_VARS() -> str
 ```
 
-Each `prompt` argument is a full LM payload and is subject to §7.5: **≤ 100k tokens and ≤ 150 instructions**. The runtime prepends only a short leaf system prompt (extract/classify/summarize; a handful of instructions). If the model concatenates a huge slice into `llm_query`, the call returns an error string and does not hit the API.
+Each `prompt` argument is a full LM payload and is subject to §7.5: **< 100k tokens and ≤ 150 instructions**. The runtime prepends only a short leaf system prompt (extract/classify/summarize; a handful of instructions). If the model concatenates a huge slice into `llm_query`, the call returns an error string and does not hit the API. The parent must slice until the child prompt is under 100k.
 
 Batch helpers must be **index-aligned** and **per-item failure tolerant**: one failed leaf (including a prompt-budget failure) returns an error string in that slot, others succeed.
 
@@ -563,7 +573,7 @@ rlm = RLM(
     environment="docker",        # required for real completions
     max_depth=1,
     max_iterations=30,
-    max_prompt_tokens=100_000,  # ceiling; smaller is allowed
+    max_prompt_tokens=99_999,   # hard max; smaller is allowed
     max_instructions=150,       # ceiling; smaller is allowed
     verbose=True,
 )
@@ -599,7 +609,7 @@ Global flags: `--root-model`, `--leaf-model`, `--max-depth`, `--max-iterations`,
 
 There is no `--env local`. The REPL is Docker. `--dry-run` still runs on the host (manifest + prompt only, no container, no API calls).
 
-`--max-prompt-tokens` and `--max-instructions` may only go **down** from 100,000 and 150. A higher value is a config error.
+`--max-prompt-tokens` and `--max-instructions` may only go **down** from 99,999 and 150. `100_000` or higher is a config error.
 
 Exit codes: `0` success, `2` budget/timeout (including prompt-token abort), `3` REPL errors exhausted, `4` user/config error (including instruction-budget / illegal ceiling / Docker not running).
 
@@ -615,7 +625,7 @@ environment = "docker"
 max_depth = 1
 max_iterations = 30
 max_observation_chars = 3000
-max_prompt_tokens = 100000
+max_prompt_tokens = 99999
 max_instructions = 150
 log_dir = ".rlm/logs"
 ```
@@ -675,7 +685,7 @@ recursive-language-model/
 │       └── trajectory.py
 ├── tests/
 │   ├── test_history_policy.py
-│   ├── test_prompt_guard.py        # never send >100k tokens or >150 instructions
+│   ├── test_prompt_guard.py        # never send >=100k tokens or >150 instructions
 │   ├── test_runtime_loop.py        # fake LM client + FakeEnv
 │   ├── test_docker_repl.py         # marked; requires Docker daemon
 │   ├── test_repo_env.py
@@ -707,7 +717,7 @@ Root system prompt (generic) should state only the rules below — do not grow t
 5. Prefer `llm_query_batched` when mapping the same question over many chunks.
 6. Accumulate results in variables. Finish with `FINAL_VAR(name)` (or the chosen `answer` dict).
 7. If you are unsure, write code to look; do not guess from the short prefix.
-8. Never pass a string into `llm_query` / `rlm_query` that you have not already measured as fitting the 100k-token leaf budget; slice first.
+8. Never pass a string into `llm_query` / `rlm_query` that you have not already measured as **under** 100k tokens; slice first.
 
 That is **8 rules**, plus builtins counted per §7.5. Domain prompts add only the object API (each method = 1) and **at most a few** strategy hints (grep before read; map then reduce; cite paths / doc ids). Do not bake benchmark-specific recipes into the default prompt. Do not add a long “always / never” appendix — that is how we blow the 150 cap and how models stop following any given rule.
 
@@ -761,7 +771,7 @@ Work is sequenced so each phase is usable and testable. Do not start evals befor
 - `llm_query` (no recursion yet) via the callback, not from inside the container's network
 - Trajectory logging
 
-**Exit:** Given a 100k-character string that does **not** fit in a tiny fake window, the root never receives the full string, can grep/slice it in code, and returns the correct needle via `FINAL_VAR`. Tests assert the full context never appears in `hist`. A second test builds a 100,001-token `llm_query` argument and asserts the API is not called. A third test composes prompts with 151 instructions and asserts startup failure. A Docker test (skipped if no daemon): a cell cannot `os.environ["OPENAI_API_KEY"]`, cannot hit the public internet, and `print(context[:20])` works after the payload was mounted — not stuffed into `hist`. Completing without Docker raises a startup error instead of exec'ing on the host.
+**Exit:** Given a 100k-character string that does **not** fit in a tiny fake window, the root never receives the full string, can grep/slice it in code, and returns the correct needle via `FINAL_VAR`. Tests assert the full context never appears in `hist`. A second test builds a 100,000-token `llm_query` argument and asserts the API is not called. A third test composes prompts with 151 instructions and asserts startup failure. A Docker test (skipped if no daemon): a cell cannot `os.environ["OPENAI_API_KEY"]`, cannot hit the public internet, and `print(context[:20])` works after the payload was mounted — not stuffed into `hist`. Completing without Docker raises a startup error instead of exec'ing on the host.
 
 ### Phase 2 — Symbolic recursion
 
@@ -811,7 +821,7 @@ Not a v0 blocker, but the north star:
 | Fixture monorepo Q&A | Code domain |
 | Multi-doc synthesis with distractors | Research domain |
 | History invariant | `full_context in hist` is always false |
-| Prompt-token ceiling | No recorded send has `prompt_tokens > 100000` |
+| Prompt-token ceiling | No recorded send has `prompt_tokens >= 100000` |
 | Instruction ceiling | No recorded send has `instruction_count > 150`; static prompt files pass the counter |
 | Cost regression | Median USD vs “stuff it in GPT-4.1/5” when it fits |
 
@@ -841,9 +851,9 @@ Must-have tests:
 6. **Repo ignore:** `node_modules` not in `repo.files()`.
 7. **Grep/read** return contents that were never copied into the initial metadata message.
 8. **Parser** extracts a `repl` block and ignores prose.
-9. **Prompt-token ceiling:** `complete()` is never invoked with `count_tokens(messages) > 100_000`. Oversize `llm_query` returns an error string.
+9. **Prompt-token ceiling:** `complete()` is never invoked with `count_tokens(messages) >= 100_000`. A 100k-token `llm_query` returns an error string.
 10. **Instruction ceiling:** composed payload with 151 counted instructions raises before any send. Checking in `rlm/prompts/` stays ≤ 150 when combined with builtins + a one-line user query.
-11. **Ceilings are not raisable:** constructing `RLM(max_prompt_tokens=100_001)` or `max_instructions=151` fails.
+11. **Ceilings are not raisable:** constructing `RLM(max_prompt_tokens=100_000)` or `max_instructions=151` fails.
 12. **Missing OpenAI key:** constructing a real `OpenAIClient` without `OPENAI_API_KEY` fails before any HTTP. FakeClient does not need a key.
 13. **Docker is the only product REPL:** `completion()` without a daemon fails; it does not `exec` on the host. FakeEnv is unused by the CLI.
 14. **Key and network stay out of the container:** Docker test asserts `OPENAI_API_KEY` is unset inside and outbound HTTP to a public URL fails.
@@ -857,7 +867,7 @@ Use a deterministic `FakeClient` and `FakeEnv` that return queued code strings /
 | Risk | Mitigation |
 |---|---|
 | Root model dumps `print(context)` and rot returns through stdout | Truncate observations; prompt against it; optionally refuse prints over N chars and tell the model to slice |
-| `llm_query` stuffed with a huge slice | Prompt guard returns an error string; model must slice. Never send >100k |
+| `llm_query` stuffed with a huge slice | Prompt guard returns an error string; parent must slice. Never send ≥100k |
 | Instruction bloat (tools, extra “always/never” rules) | Counter + CI on prompt files; fail closed at 151 rather than drop rules |
 | Runaway cost from nested batched calls | Hard caps on concurrent subcalls, iterations, USD, tokens; remaining-budget children |
 | Local `exec` as a security hole | Not the product path. Docker REPL; no silent fallback |
@@ -907,4 +917,4 @@ Resolve during Phase 0–1 implementation, not by blocking this spec:
 
 ## 19. One-paragraph brief
 
-Build an inference-time Recursive Language Model on **OpenAI** (`OPENAI_API_KEY`, official `openai` SDK) with a **Docker REPL**: a containerized persistent Python interpreter that holds the user's codebase or research corpus as data, a root LLM (`gpt-5` by default) on the host that only sees truncated metadata and writes code, and recursive cheap OpenAI calls (`gpt-5-mini` by default) invoked from that code via a host callback (the key never enters the container). Every LM call is refused if it would exceed **100k input tokens** or **150 instructions**. The point is to explore large repositories and document collections without ever loading them into a single context window, so context rot cannot eat the session. Ship a library, a CLI (`rlm ask`, `rlm research`), inspectable trajectories, and tests that prove the source text never entered the root history and that no send broke those two ceilings.
+Build an inference-time Recursive Language Model on **OpenAI** (`OPENAI_API_KEY`, official `openai` SDK) with a **Docker REPL**: a containerized persistent Python interpreter that holds the user's codebase or research corpus as data, a root LLM (`gpt-5` by default) on the host that only sees truncated metadata and writes code, and recursive cheap OpenAI calls (`gpt-5-mini` by default) invoked from that code via a host callback (the key never enters the container). Every LM call is refused if it would have **100k or more input tokens** or **more than 150 instructions**. The point is to explore large repositories and document collections without ever loading them into a single context window, so context rot cannot eat the session. Ship a library, a CLI (`rlm ask`, `rlm research`), inspectable trajectories, and tests that prove the source text never entered the root history and that no send broke those two ceilings.
