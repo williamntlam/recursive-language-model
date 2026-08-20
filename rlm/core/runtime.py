@@ -151,16 +151,28 @@ class Runtime:
                     completion_tokens=lm.completion_tokens,
                     latency_s=time.perf_counter() - t0,
                     cost_usd=cost,
+                    text_n_chars=len(lm.text or ""),
                 )
                 code = extract_repl_code(lm.text)
                 hist.append(Message("assistant", lm.text))
                 if code is None:
                     consec_err += 1
                     note = (
-                        "No ```repl``` block found. Write Python inside a fenced ```repl block."
+                        "No executable code fence found. Write Python inside a "
+                        "fenced ```repl (or ```python) block."
                     )
                     hist.append(Message("user", note))
-                    self.logger.event(kind="parse_error", iteration=i, depth=self.depth)
+                    preview = (lm.text or "")[:4000]
+                    self.logger.event(
+                        kind="parse_error",
+                        iteration=i,
+                        depth=self.depth,
+                        text_n_chars=len(lm.text or ""),
+                        text_preview=preview,
+                    )
+                    if self.config.verbose:
+                        shown = preview or "(empty model output)"
+                        print(f"parse_error: {shown}", file=sys.stderr)
                     if consec_err >= self.config.max_consecutive_errors:
                         raise ReplErrorsExhausted("Consecutive REPL parse errors exhausted.")
                     continue

@@ -17,7 +17,7 @@ FINAL_VAR("result")
 ```
 ````
 
-The parser (`rlm.core.parse.extract_repl_code`) takes the **last** `repl` fence (case-insensitive). Prose outside fences is ignored. A ```python fence is **not** executed. If no `repl` block is found, the runtime appends a reminder and counts a consecutive error.
+The parser (`rlm.core.parse.extract_repl_code`) takes the **last** `repl` fence (case-insensitive), including an **unclosed** fence (body until end of the turn). If none, it falls back to ````python` / ````py`, then an unlabeled ```` fence. gpt-5 often writes a bare `repl` heading with no backticks; that is treated as a cell too. JSON/markdown/shell fences are ignored. If nothing executable is found, the runtime logs a preview, appends a reminder, and counts a consecutive error.
 
 ## Builtins always injected
 

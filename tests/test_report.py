@@ -46,6 +46,8 @@ def _run_dir(tmp_path: Path) -> Path:
         prompt_tokens=200,
         instruction_count=40,
         completion_tokens=30,
+        latency_s=0.2,
+        cost_usd=0.0004,
     )
     logger.event(kind="rlm_query", depth=0, child_depth=1, answer_n_chars=12)
     logger.event(
@@ -66,6 +68,17 @@ def test_finish_writes_report_html(tmp_path):
     assert html_path.is_file()
     html = html_path.read_text(encoding="utf-8")
     assert "The needle is in src/deep/secret.py:4." in html
+    assert "Prompt tokens" in html
+    assert "Total tokens" in html
+    assert "Cost (USD)" in html
+    assert "LM calls" in html
+    assert ">850<" in html  # usage.json 800+50
+    assert ">820<" in html  # first root_lm 800+20
+    assert ">230<" in html  # llm_query 200+30
+    assert "$0.0020" in html  # run total from usage.json
+    assert "$0.0010" in html  # first root_lm
+    assert "$0.0004" in html  # llm_query
+    assert "Sum of 3 calls" in html
     assert "llm_query" in html
     assert "Parent prompt tokens" in html
     assert "Instruction count is constant" in html

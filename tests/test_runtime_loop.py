@@ -65,3 +65,41 @@ def test_rlm_query_spawns_child_with_own_env(tmp_path):
     # parent root + child root
     assert len(client.calls) >= 2
     assert out.usage.subcalls >= 1
+
+
+def test_python_fence_is_executed(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        ["Here is code:\n```python\nFINAL('from-python-fence')\n```\n"],
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "from-python-fence"
+
+
+def test_bare_repl_header_is_executed(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            "repl\n"
+            "# Explore the repository\n"
+            "FINAL('from-bare-repl')\n"
+        ],
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "from-bare-repl"
+
+
+def test_parse_error_logs_model_preview(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            "I refuse to use a fence.",
+            "```python\nFINAL('recovered')\n```",
+        ],
+        max_consecutive_errors=5,
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "recovered"
+    events = (out.trajectory / "events.jsonl").read_text(encoding="utf-8")
+    assert "parse_error" in events
+    assert "I refuse to use a fence." in events

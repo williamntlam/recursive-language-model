@@ -22,7 +22,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | `runtime.py` | Iteration loop, `RuntimeHandler`, `leaf_complete`, `child_rlm`, `batched`, string metadata/workspace |
 | `types.py` | `Message`, `Usage`, `Completion`, `LMResponse`, `Observation`, `PromptPayload` |
 | `history.py` | `format_observation`, `sha256_text`, `hist_contains_context` |
-| `parse.py` | Last ` ```repl ` fence |
+| `parse.py` | Last `repl` / `python` fence |
 | `prompt_guard.py` | `count_tokens`, `count_instructions`, `assert_sendable` |
 | `budgets.py` | `Budget`, `estimate_cost_usd`, `PRICES_PER_MILLION` |
 

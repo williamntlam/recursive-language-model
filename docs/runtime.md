@@ -26,7 +26,7 @@ Startup refusals:
 
 ## Code extraction
 
-`extract_repl_code` matches ```` ```repl ```` (any flags on the opening fence, case-insensitive) and returns the **last** block. No block → user message `"No ```repl``` block found…"` and a consecutive-error tick.
+`extract_repl_code` matches ```` ```repl ```` first (closed or unclosed), then ```` ```python ```` / ```` ```py ````, then an unlabeled fence (skipping json/markdown/shell), then a bare `repl` / `python` heading. It returns the **last** matching labeled block. No executable cell → user reminder, `parse_error` with a text preview, and a consecutive-error tick.
 
 ## Stall and error abort
 

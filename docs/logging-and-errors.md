@@ -13,7 +13,7 @@ Each successful or failed run that reaches `TrajectoryLogger` writes:
   report.html        # static timeline; written after the run (also on abort)
 ```
 
-Open `report.html` in a browser. It is a self-contained file (inline CSS, no network). Recursion depth is left indent; parent prompt tokens are a bar chart so you can see whether `hist` is rotting.
+Open `report.html` in a browser. It is a self-contained file (inline CSS, no network). The header lists **prompt / completion / total tokens** and **USD cost**. A table lists every OpenAI call (`root_lm`, `llm_query`) with the same fields. Recursion depth is left indent; parent prompt tokens are a bar chart so you can see whether `hist` is rotting.
 
 Regenerate without re-running:
 

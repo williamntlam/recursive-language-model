@@ -88,7 +88,9 @@ def render_report(run: dict[str, Any]) -> str:
     status = "complete" if run["complete"] else "incomplete"
     generated = datetime.now(UTC).strftime("%Y-%m-%d %H:%M UTC")
 
-    stats = _stats_row(usage, events, run["complete"])
+    calls = _lm_calls(events)
+    stats = _stats_row(usage, events, calls, run["complete"])
+    calls_table = _calls_table(calls)
     parent_chart = _parent_token_chart(events)
     inst_note = _instruction_note(events)
     answer_html = _answer_block(run["answer"])
@@ -117,6 +119,7 @@ def render_report(run: dict[str, Any]) -> str:
     {_meta_chips(meta)}
   </header>
   {stats}
+  {calls_table}
   {parent_chart}
   {inst_note}
   {answer_html}
@@ -138,10 +141,70 @@ def render_report(run: dict[str, Any]) -> str:
 """
 
 
+LM_KINDS = frozenset({"root_lm", "llm_query"})
+
+
 def _e(value: Any) -> str:
     if value is None:
         return "—"
     return escape(str(value))
+
+
+def _as_int(value: Any) -> int | None:
+    if value is None:
+        return None
+    try:
+        return int(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _as_float(value: Any) -> float | None:
+    if value is None:
+        return None
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def _fmt_int(value: int | None) -> str:
+    if value is None:
+        return "—"
+    return f"{value:,}"
+
+
+def _fmt_cost(value: float | None) -> str:
+    if value is None:
+        return "—"
+    return f"${value:.4f}"
+
+
+def _lm_calls(events: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    rows: list[dict[str, Any]] = []
+    for i, ev in enumerate(events):
+        if ev.get("kind") not in LM_KINDS:
+            continue
+        prompt = _as_int(ev.get("prompt_tokens"))
+        completion = _as_int(ev.get("completion_tokens"))
+        total = None
+        if prompt is not None or completion is not None:
+            total = (prompt or 0) + (completion or 0)
+        rows.append(
+            {
+                "index": i,
+                "kind": str(ev.get("kind")),
+                "model": ev.get("model"),
+                "depth": _as_int(ev.get("depth")) or 0,
+                "iteration": ev.get("iteration"),
+                "prompt": prompt,
+                "completion": completion,
+                "total": total,
+                "cost": _as_float(ev.get("cost_usd")),
+                "latency_s": _as_float(ev.get("latency_s")),
+            }
+        )
+    return rows
 
 
 def _meta_chips(meta: dict[str, Any]) -> str:
@@ -162,17 +225,26 @@ def _meta_chips(meta: dict[str, Any]) -> str:
     return '<p class="chips">' + "".join(chips) + "</p>"
 
 
-def _stats_row(usage: dict[str, Any], events: list[dict[str, Any]], complete: bool) -> str:
-    prompt = usage.get("prompt_tokens")
-    completion = usage.get("completion_tokens")
-    if prompt is None:
-        prompt = sum(int(e.get("prompt_tokens") or 0) for e in events)
-        completion = sum(int(e.get("completion_tokens") or 0) for e in events)
-    cost = usage.get("cost_usd")
-    cost_s = f"${cost:.4f}" if isinstance(cost, (int, float)) else "—"
-    iters = usage.get("iterations", "—")
-    subcalls = usage.get("subcalls", "—")
-    kinds = {}
+def _stats_row(
+    usage: dict[str, Any],
+    events: list[dict[str, Any]],
+    calls: list[dict[str, Any]],
+    complete: bool,
+) -> str:
+    prompt = _as_int(usage.get("prompt_tokens"))
+    completion = _as_int(usage.get("completion_tokens"))
+    cost = _as_float(usage.get("cost_usd"))
+    if not usage:
+        prompt = sum((c["prompt"] or 0) for c in calls)
+        completion = sum((c["completion"] or 0) for c in calls)
+        priced = [c["cost"] for c in calls if c["cost"] is not None]
+        cost = sum(priced) if priced else None
+    total = None
+    if prompt is not None or completion is not None:
+        total = (prompt or 0) + (completion or 0)
+    iters = usage.get("iterations") if usage else None
+    subcalls = usage.get("subcalls") if usage else None
+    kinds: dict[str, int] = {}
     for e in events:
         k = str(e.get("kind") or "other")
         kinds[k] = kinds.get(k, 0) + 1
@@ -181,22 +253,111 @@ def _stats_row(usage: dict[str, Any], events: list[dict[str, Any]], complete: bo
     if not complete:
         note = (
             '<p class="warn">Run did not finish. '
-            "Answer and usage may be missing.</p>"
+            "Answer and usage may be missing. Totals below are summed "
+            "from recorded LM calls.</p>"
         )
     return f"""
   <section class="stats">
     {note}
     <div class="grid">
       <div>
-        <div class="label">Tokens</div>
-        <div class="value">{_e(prompt)}+{_e(completion)}</div>
+        <div class="label">Prompt tokens</div>
+        <div class="value">{_fmt_int(prompt)}</div>
       </div>
-      <div><div class="label">Cost</div><div class="value">{escape(cost_s)}</div></div>
-      <div><div class="label">Iterations</div><div class="value">{_e(iters)}</div></div>
-      <div><div class="label">Subcalls</div><div class="value">{_e(subcalls)}</div></div>
-      <div><div class="label">Events</div><div class="value">{len(events)}</div></div>
+      <div>
+        <div class="label">Completion tokens</div>
+        <div class="value">{_fmt_int(completion)}</div>
+      </div>
+      <div>
+        <div class="label">Total tokens</div>
+        <div class="value">{_fmt_int(total)}</div>
+      </div>
+      <div>
+        <div class="label">Cost (USD)</div>
+        <div class="value">{_fmt_cost(cost)}</div>
+      </div>
+      <div>
+        <div class="label">Iterations</div>
+        <div class="value">{_fmt_int(_as_int(iters))}</div>
+      </div>
+      <div>
+        <div class="label">Subcalls</div>
+        <div class="value">{_fmt_int(_as_int(subcalls))}</div>
+      </div>
     </div>
-    <p class="muted kinds">{escape(kind_s)}</p>
+    <p class="muted kinds">{escape(kind_s)}. Cost is estimated from a
+      local price table when OpenAI does not report dollars.</p>
+  </section>
+"""
+
+
+def _calls_table(calls: list[dict[str, Any]]) -> str:
+    if not calls:
+        return ""
+    kind_label = {"root_lm": "root LM", "llm_query": "llm_query"}
+    body: list[str] = []
+    for row in calls:
+        kind = kind_label.get(row["kind"], row["kind"])
+        iter_s = "—" if row["iteration"] is None else str(row["iteration"])
+        lat = row["latency_s"]
+        lat_s = "—" if lat is None else f"{lat:.2f}s"
+        body.append(
+            "<tr>"
+            f'<td class="left">#{row["index"]}</td>'
+            f'<td class="left">{escape(kind)}</td>'
+            f'<td class="left">{_e(row["model"])}</td>'
+            f"<td>{row['depth']}</td>"
+            f"<td>{escape(iter_s)}</td>"
+            f"<td>{_fmt_int(row['prompt'])}</td>"
+            f"<td>{_fmt_int(row['completion'])}</td>"
+            f"<td>{_fmt_int(row['total'])}</td>"
+            f"<td>{_fmt_cost(row['cost'])}</td>"
+            f"<td>{escape(lat_s)}</td>"
+            "</tr>"
+        )
+    sp = sum((c["prompt"] or 0) for c in calls)
+    sc = sum((c["completion"] or 0) for c in calls)
+    priced = [c["cost"] for c in calls if c["cost"] is not None]
+    st = sp + sc
+    cost_sum = sum(priced) if priced else None
+    return f"""
+  <section>
+    <h2>LM calls</h2>
+    <p class="muted">One row per OpenAI request (root turns and
+      <code>llm_query</code> leaves). Nested <code>rlm_query</code>
+      children appear as extra root LM rows at a higher depth.
+      Prompt tokens here are the guarded input size for that send.</p>
+    <div class="table-wrap">
+    <table class="calls">
+      <thead>
+        <tr>
+          <th class="left">#</th>
+          <th class="left">Kind</th>
+          <th class="left">Model</th>
+          <th>Depth</th>
+          <th>Iter</th>
+          <th>Prompt</th>
+          <th>Completion</th>
+          <th>Total</th>
+          <th>Cost</th>
+          <th>Latency</th>
+        </tr>
+      </thead>
+      <tbody>
+        {"".join(body)}
+      </tbody>
+      <tfoot>
+        <tr>
+          <td class="left" colspan="5">Sum of {len(calls)} calls</td>
+          <td>{_fmt_int(sp)}</td>
+          <td>{_fmt_int(sc)}</td>
+          <td>{_fmt_int(st)}</td>
+          <td>{_fmt_cost(cost_sum)}</td>
+          <td></td>
+        </tr>
+      </tfoot>
+    </table>
+    </div>
   </section>
 """
 
@@ -281,28 +442,48 @@ def _event_card(ev: dict[str, Any], index: int) -> str:
         bits.append(f"iter {ev['iteration']}")
     if ev.get("model"):
         bits.append(str(ev["model"]))
-    if ev.get("prompt_tokens") is not None:
-        bits.append(f"{ev['prompt_tokens']} tok")
-    if ev.get("completion_tokens") is not None:
-        bits.append(f"+{ev['completion_tokens']}")
-    if ev.get("instruction_count") is not None:
+    if ev.get("instruction_count") is not None and kind not in LM_KINDS:
         bits.append(f"{ev['instruction_count']} inst")
-    if ev.get("latency_s") is not None:
-        try:
-            bits.append(f"{float(ev['latency_s']):.2f}s")
-        except (TypeError, ValueError):
-            pass
-    if ev.get("cost_usd") is not None:
-        try:
-            bits.append(f"${float(ev['cost_usd']):.4f}")
-        except (TypeError, ValueError):
-            pass
     if ev.get("child_depth") is not None:
         bits.append(f"child depth {ev['child_depth']}")
     if ev.get("answer_n_chars") is not None:
         bits.append(f"{ev['answer_n_chars']} char answer")
 
     body: list[str] = []
+    if kind in LM_KINDS:
+        prompt = _as_int(ev.get("prompt_tokens"))
+        completion = _as_int(ev.get("completion_tokens"))
+        total = None
+        if prompt is not None or completion is not None:
+            total = (prompt or 0) + (completion or 0)
+        lat = _as_float(ev.get("latency_s"))
+        lat_s = "—" if lat is None else f"{lat:.2f}s"
+        inst = ev.get("instruction_count")
+        inst_s = "—" if inst is None else str(inst)
+        body.append(
+            '<div class="call-metrics">'
+            f'<div><div class="label">Prompt tokens</div>'
+            f'<div class="value">{_fmt_int(prompt)}</div></div>'
+            f'<div><div class="label">Completion tokens</div>'
+            f'<div class="value">{_fmt_int(completion)}</div></div>'
+            f'<div><div class="label">Total tokens</div>'
+            f'<div class="value">{_fmt_int(total)}</div></div>'
+            f'<div><div class="label">Cost (USD)</div>'
+            f'<div class="value">{_fmt_cost(_as_float(ev.get("cost_usd")))}'
+            f"</div></div>"
+            f'<div><div class="label">Latency</div>'
+            f'<div class="value">{escape(lat_s)}</div></div>'
+            f'<div><div class="label">Instructions</div>'
+            f'<div class="value">{escape(inst_s)}</div></div>'
+            "</div>"
+        )
+    if ev.get("text_preview"):
+        body.append(
+            "<details open>"
+            "<summary>model output (no executable fence)</summary>"
+            f'<pre>{escape(str(ev["text_preview"]))}</pre>'
+            "</details>"
+        )
     if ev.get("error"):
         body.append(f'<pre class="err">{escape(str(ev["error"]))}</pre>')
     if ev.get("code"):
@@ -383,6 +564,17 @@ h2 { font-size: 0.92rem; text-transform: uppercase; letter-spacing: 0.06em;
 .label { color: var(--muted); font-size: 0.75rem; text-transform: uppercase;
   letter-spacing: 0.05em; }
 .value { font-variant-numeric: tabular-nums; font-size: 1.1rem; }
+.call-metrics { display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(7.5rem, 1fr));
+  gap: 0.5rem; margin: 0.4rem 0 0.2rem; }
+.call-metrics .value { font-size: 1rem; }
+.table-wrap { overflow-x: auto; border: 1px solid var(--line); background: var(--card); }
+table.calls { width: 100%; border-collapse: collapse; font-size: 0.85rem;
+  font-variant-numeric: tabular-nums; }
+table.calls th, table.calls td { padding: 0.4rem 0.55rem; text-align: right;
+  border-bottom: 1px solid var(--line); }
+table.calls th.left, table.calls td.left { text-align: left; }
+table.calls tfoot td { font-weight: 650; border-bottom: 0; }
 .kinds { margin: 0.6rem 0 0; font-size: 0.85rem; }
 .warn, .ok { padding: 0.6rem 0.8rem; margin: 0 0 0.8rem; }
 .warn { background: var(--warn-bg); color: var(--warn-fg); }

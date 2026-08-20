@@ -55,5 +55,42 @@ Done.
     assert "not this" not in code
 
 
+def test_parser_falls_back_to_python_fence():
+    text = """Looking around.
+
+```python
+hits = repo.grep("generate")
+FINAL("ok")
+```
+"""
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "repo.grep" in code
+
+
+def test_parser_accepts_unclosed_repl_fence():
+    text = "```repl\npaths = repo.grep(r'def generate')\nprint(paths[:10])\n"
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "repo.grep" in code
+
+
+def test_parser_accepts_bare_repl_header():
+    text = (
+        "repl\n"
+        "# Explore the repository to locate generate() and logits warping usage\n"
+        'paths = repo.grep(r"def generate\\(")\n'
+        "len(paths), paths[:10]"
+    )
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "repo.grep" in code
+    assert not code.lstrip().startswith("repl")
+
+
+def test_parser_skips_json_fence():
+    assert extract_repl_code('```json\n{"a": 1}\n```') is None
+
+
 def test_parser_returns_none_without_repl_fence():
     assert extract_repl_code("just prose and `code`") is None

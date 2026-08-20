@@ -56,15 +56,7 @@ class OpenAIClient:
     def _complete_responses(self, messages: list[Message], *, model: str) -> LMResponse:
         payload = [{"role": m.role, "content": m.content} for m in messages]
         resp = self._client.responses.create(model=model, input=payload)
-        text = getattr(resp, "output_text", None) or ""
-        if not text:
-            chunks: list[str] = []
-            for item in getattr(resp, "output", None) or []:
-                for content in getattr(item, "content", None) or []:
-                    value = getattr(content, "text", None)
-                    if value:
-                        chunks.append(value)
-            text = "".join(chunks)
+        text = responses_text(resp)
         usage = getattr(resp, "usage", None)
         prompt_tokens = int(
             getattr(usage, "input_tokens", 0) or getattr(usage, "prompt_tokens", 0) or 0
@@ -78,3 +70,44 @@ class OpenAIClient:
             completion_tokens=completion_tokens,
             model=model,
         )
+
+
+def responses_text(resp: object) -> str:
+    """Pull visible text out of a Responses API object (gpt-5 / o-series)."""
+    direct = getattr(resp, "output_text", None)
+    if isinstance(direct, str) and direct.strip():
+        return direct
+    chunks: list[str] = []
+    _collect_text(resp, chunks, depth=0)
+    return "".join(chunks)
+
+
+def _collect_text(obj: object, chunks: list[str], *, depth: int) -> None:
+    if obj is None or depth > 8:
+        return
+    if isinstance(obj, str):
+        return
+    typ = getattr(obj, "type", None)
+    if typ in {"reasoning", "function_call", "function_call_output", "refusal"}:
+        return
+    if typ in {"output_text", "text"}:
+        value = getattr(obj, "text", None)
+        if isinstance(value, str) and value:
+            chunks.append(value)
+            return
+        if value is not None and not isinstance(value, (str, bytes)):
+            inner = getattr(value, "value", None) or getattr(value, "text", None)
+            if isinstance(inner, str) and inner:
+                chunks.append(inner)
+                return
+    content = getattr(obj, "content", None)
+    if isinstance(content, str) and content:
+        if typ in {None, "message", "output_text", "text"}:
+            chunks.append(content)
+    elif isinstance(content, list):
+        for item in content:
+            _collect_text(item, chunks, depth=depth + 1)
+    output = getattr(obj, "output", None)
+    if isinstance(output, list):
+        for item in output:
+            _collect_text(item, chunks, depth=depth + 1)
