@@ -48,6 +48,10 @@ print(out.usage)
 
 Config is **TOML or YAML** (`rlm.toml`, `rlm.yaml`, or `rlm.yml`). Same keys. Do not put both formats in the working directory. Auth is never in the file.
 
+## Documentation
+
+Full docs live in [`docs/`](docs/README.md): getting started, architecture, CLI, Python API, configuration, REPL, domains, runtime invariants, logging, and the module map.
+
 ## When not to use this
 
 Short prompts are often worse under an RLM scaffold than a single base-model call (as in the paper). Use this when the source would overflow or rot a normal window.

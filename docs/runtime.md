@@ -1,0 +1,155 @@
+# Runtime
+
+The runtime (`rlm.core.runtime.Runtime`) owns the loop, not the model. It builds the prompt, calls the root LM, parses `repl` fences, executes in Docker, truncates observations, guards every send, and spawns children.
+
+## Root loop
+
+```
+payload ← compose_system_prompt(domain) + exposed methods + user query + extra_instructions
+hist    ← [system(payload), user(metadata ‖ query)]
+env     ← Docker container, persistent namespace
+loop i in 0 .. max_iterations-1:
+    budget.check()
+    assert_sendable(hist, payload)          # <100k tokens, ≤150 instructions
+    lm      ← root_model.complete(hist)
+    code    ← last ```repl``` fence
+    obs     ← env.execute(code)
+    hist    ← hist ‖ assistant(lm) ‖ user(truncated stdout)
+    if FINAL set: return it
+abort: max_iterations without FINAL_VAR
+```
+
+Startup refusals:
+
+- Static system+metadata already `>= 100_000` tokens → `PromptBudgetError`.
+- Composed instructions `> max_instructions` → `InstructionBudgetError` (CLI exit 4).
+
+## Code extraction
+
+`extract_repl_code` matches ```` ```repl ```` (any flags on the opening fence, case-insensitive) and returns the **last** block. No block → user message `"No ```repl``` block found…"` and a consecutive-error tick.
+
+## Stall and error abort
+
+| Condition | Result |
+|---|---|
+| Same code cell twice in a row, then a third identical (`identical >= 2`) | `ReplErrorsExhausted` |
+| `max_consecutive_errors` parse or REPL exceptions (default 5) | `ReplErrorsExhausted` |
+| `max_iterations` without `FINAL*` | `BudgetExhaustedError` |
+
+A successful cell resets the consecutive-error counter.
+
+## History policy (anti-rot)
+
+This is the subsystem naive agent ports get wrong.
+
+Each observation appended to `hist` is:
+
+```
+<stdout truncated to max_observation_chars>
+...[truncated, total_len=L, sha256=…]
+--- stderr ---
+<stderr truncated similarly>
+```
+
+Never appended:
+
+- the full `context` / repo dump / document bodies
+- full file contents (they stay in variables)
+- full sub-call transcripts (only the child **answer string** returns into a variable; the parent sees it if the model **prints** it, still truncated)
+
+If `hist` itself would be 100k tokens or more on the next parent call, **do not send**. Do not summarize the corpus. Raise `PromptBudgetError` (CLI exit 2). Observation truncation exists so this abort should be rare; if it is common, lower `max_observation_chars`. Compacting the source data is how rot re-enters.
+
+Helper for tests: `hist_contains_context(hist_text, context)`.
+
+## Prompt guard
+
+Module: `rlm.core.prompt_guard`. `LMClient.complete` is **not** responsible for the policy. The runtime wraps every send. `FakeClient` raises `AssertionError` if a ≥100k payload reaches it, so a missed guard is a red test.
+
+### Token counting
+
+- `tiktoken` encoding `cl100k_base`.
+- Count the **exact message list** about to be sent (roles + contents + 3 tokens of framing per message).
+- Do **not** count bound REPL `context` unless it was copied into those messages.
+- Legal: `count_tokens(messages) < 100_000` **and** `<= max_prompt_tokens`.
+- Illegal: `>= 100_000` or `> max_prompt_tokens`.
+- Batched calls: each prompt is guarded on its own. A 200-item batch of 10k-token prompts is 200 legal calls, not one 2M-token call.
+
+| Caller | Oversize behavior |
+|---|---|
+| Parent / root loop | Do not call the LM. `PromptBudgetError`. Persist trajectory. |
+| `llm_query` / `rlm_query` | Return an error **string** into the REPL (`Error: prompt is N tokens; max is 99999. Slice the argument.`). One oversize leaf does not kill the batch. |
+
+100k is a **backstop**, not a target. The parent should sit in the low thousands of tokens. Leaves should receive only the snippet they need.
+
+This limit is on **input context of an LM call**, not on REPL memory and not on the final answer. `FINAL_VAR` may return a long string assembled in the container. That string is not prompt text unless a later `llm_query` tries to send it.
+
+### Instruction counting
+
+An **instruction** is a discrete directive the model is expected to obey. Observations, model-written code, stdout, and corpus/repo *data* are not instructions.
+
+Count **1** for each of:
+
+1. Each numbered or bulleted list item in system and developer prompts.
+2. Each exposed REPL builtin or domain method (`llm_query`, `repo.grep`, …). Listed twice still counts once.
+3. The user query (one unit).
+4. Each `extra_instructions` string.
+
+Do **not** count stdout, truncation notices, hashes, code cells, or manifest/catalog/tree **data**.
+
+The composed set is computed **before the first token is sent** and must not grow during the session. New observations must not add instructions. Exceeding 150 → `InstructionBudgetError`. Do not drop rules silently to fit.
+
+Exposed-method catalogs live in `rlm/prompts/catalog.py`.
+
+## Recursion
+
+### `llm_query` (leaf)
+
+`Runtime.leaf_complete`:
+
+1. `budget.check()`; on exhaustion return `Error: …` rather than raising (so a batch can continue).
+2. Messages = leaf system prompt + user prompt.
+3. `assert_sendable(..., as_parent=False)`.
+4. Complete with `leaf_model` (or the `model=` override).
+5. Record tokens/cost/subcalls under a lock (batches are concurrent).
+
+### `rlm_query` (child RLM)
+
+`Runtime.child_rlm`:
+
+1. `child_depth = depth + 1`.
+2. If `child_depth > max_depth`: degrade to `llm_query` **only if** the prompt is under 100k; else return `Error: depth cap; slice smaller…`.
+3. Else spawn a new `Runtime` with `budget.inherit()`, `domain=None`, string mode: the prompt is bound as `context` with a fixed child query (“Execute the task described in the `context` variable…”).
+4. Own container (product path) or own `FakeEnv` (tests).
+5. Fold child spent USD / tokens / iterations / subcalls into the parent budget.
+6. Return `result.response` (not the child trajectory dump).
+
+Child extra instructions and verbose flag are inherited. `max_budget_usd` / `max_timeout_s` on the child config are the **remaining** values.
+
+### Batches
+
+`Runtime.batched` uses `ThreadPoolExecutor` with `min(max_concurrent_subcalls, len(prompts))` workers. Exceptions become `Error: …` strings in that index.
+
+## Budgets
+
+`rlm.core.budgets.Budget`:
+
+- Optional `max_usd` and `max_timeout_s` (deadline = monotonic start + timeout).
+- `check()` raises `BudgetExhaustedError` if remaining time or USD is `<= 0`.
+- `record(LMResponse)` estimates USD from a small price table (`PRICES_PER_MILLION` in `budgets.py`) and accumulates tokens.
+- `inherit()` gives the child remaining timeout and remaining USD, with spent reset to 0.
+
+Checked at the start of each root iteration and each subcall. After recording a completion, `check()` runs again so an over-budget last call still aborts the next step.
+
+Default models in the price table: `gpt-5`, `gpt-5-mini`, `gpt-5-nano`, `gpt-4.1`, `gpt-4.1-mini`, `gpt-4.1-nano`, `gpt-4o`, `gpt-4o-mini`. Unknown ids use `(1.00, 4.00)` per million (input, output).
+
+## Verbose mode
+
+When `verbose=True`, each iteration prints to stderr:
+
+```
+--- iteration i depth=d tokens=N inst=M ---
+<repl code>
+<truncated observation>
+```
+
+The CLI sets verbose when `--verbose` is passed; otherwise it follows config (CLI currently forces `verbose=True` only if the flag is set, else `None` so the file/default applies).
