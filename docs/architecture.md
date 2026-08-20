@@ -31,7 +31,7 @@ The host process owns the RLM loop, OpenAI calls, prompt guard, and trajectory l
 ## Host vs container
 
 ```
-Host                                              Container (rlm-repl:0.1.0)
+Host                                              Container (rlm-repl:0.1.4)
 ────                                              ─────────────────────────
 RLM loop                                          persistent Python interpreter
 OpenAI client + OPENAI_API_KEY                    context / repo / corpus variables
@@ -64,7 +64,7 @@ Loop:  gpt-5 writes ```repl``` Python
 Return answer + usage + trajectory directory
 ```
 
-Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Prefer breadth at a given level (`llm_query_batched` over many files) and extra depth only when a piece is still too large or still needs code.
+Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Repo/research children **inherit the same workspace**, so they can keep grepping; they do not need the parent to stuff the file into the prompt. Fan out with `rlm_query_batched` / `repo.explore`; nest again when a piece is still large.
 
 ## How context enters the container
 
@@ -98,7 +98,7 @@ CLI (rlm.cli)  →  RLM (rlm.api)  →  Runtime (rlm.core.runtime)
 
 | Knob | Value |
 |---|---|
-| Image | `rlm-repl:0.1.0` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
+| Image | `rlm-repl:0.1.4` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
 | Network | `network_mode="none"` |
 | `OPENAI_API_KEY` in container | unset |
 | Root filesystem | read-only; tmpfs on `/tmp` and `/repl` (64 MiB each) |

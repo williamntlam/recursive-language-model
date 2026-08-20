@@ -14,7 +14,13 @@ from typing import Any
 
 from rlm.config import Config
 from rlm.core.budgets import Budget
-from rlm.core.history import format_observation, sha256_text
+from rlm.core.history import (
+    assistant_cell_message,
+    compact_parent_hist,
+    format_observation,
+    observation_nudge,
+    sha256_text,
+)
 from rlm.core.parse import extract_repl_code
 from rlm.core.prompt_guard import assert_sendable, count_instructions, count_tokens
 from rlm.core.types import Completion, Message, PromptPayload, Usage
@@ -72,6 +78,10 @@ class Runtime:
         self.budget = budget or Budget.from_config(config.max_budget_usd, config.max_timeout_s)
         self.handler = RuntimeHandler(self)
         self._budget_lock = threading.Lock()
+        self.mode = "string"
+        self._workspace: Path | None = None
+        self._bindings: dict[str, Any] = {}
+        self._metadata = ""
 
     def compose_payload(self, query: str) -> PromptPayload:
         extras = list(self.config.extra_instructions or [])
@@ -111,6 +121,10 @@ class Runtime:
             raise PromptBudgetError(
                 "Static system+domain prompt is >= 100k tokens; refuse to start."
             )
+        self.mode = mode
+        self._workspace = workspace
+        self._bindings = bindings
+        self._metadata = metadata
         env = self.env_factory(
             bindings=bindings,
             handler=self.handler,
@@ -154,12 +168,14 @@ class Runtime:
                     text_n_chars=len(lm.text or ""),
                 )
                 code = extract_repl_code(lm.text)
-                hist.append(Message("assistant", lm.text))
                 if code is None:
+                    hist.append(Message("assistant", lm.text))
                     consec_err += 1
                     note = (
                         "No executable code fence found. Write Python inside a "
-                        "fenced ```repl (or ```python) block."
+                        "fenced ```repl (or ```python) block. Do not answer in prose; "
+                        "keep findings in variables and finish with FINAL / FINAL_VAR. "
+                        "To read a file, spawn rlm_query / repo.explore, or repo.ask a tight span."
                     )
                     hist.append(Message("user", note))
                     preview = (lm.text or "")[:4000]
@@ -175,7 +191,9 @@ class Runtime:
                         print(f"parse_error: {shown}", file=sys.stderr)
                     if consec_err >= self.config.max_consecutive_errors:
                         raise ReplErrorsExhausted("Consecutive REPL parse errors exhausted.")
+                    compact_parent_hist(hist)
                     continue
+                hist.append(assistant_cell_message(code))
                 if last_code is not None and code.strip() == last_code.strip():
                     identical += 1
                     if identical >= 2:
@@ -187,6 +205,10 @@ class Runtime:
                     print(code, file=sys.stderr)
                 obs = env.execute(code)
                 formatted = format_observation(obs, self.config.max_observation_chars)
+                probe = list(hist) + [Message("user", formatted)]
+                nudge = observation_nudge(count_tokens(probe))
+                if nudge:
+                    formatted = formatted + "\n\n" + nudge
                 self.logger.event(
                     kind="repl",
                     iteration=i,
@@ -209,6 +231,7 @@ class Runtime:
                     answer = obs.final
                     break
                 hist.append(Message("user", formatted))
+                compact_parent_hist(hist)
             else:
                 raise BudgetExhaustedError(
                     f"max_iterations ({self.config.max_iterations}) exhausted without FINAL_VAR."
@@ -297,7 +320,6 @@ class Runtime:
                 )
             return self.leaf_complete(prompt, model=model)
         child_budget = self.budget.inherit()
-        child_config = self.config
         from dataclasses import replace
 
         child_config = replace(
@@ -307,6 +329,9 @@ class Runtime:
             extra_instructions=self.config.extra_instructions,
             verbose=self.config.verbose,
         )
+        query, metadata, bindings, workspace, mode, cleanup, domain = self._child_launch(
+            prompt
+        )
         child = Runtime(
             child_config,
             self.client,
@@ -314,18 +339,15 @@ class Runtime:
             self.logger,
             depth=child_depth,
             budget=child_budget,
-            domain=None,
+            domain=domain,
         )
-        meta = string_metadata(prompt)
-        bindings = {"query": CHILD_QUERY, "context": prompt}
-        workspace, cleanup = workspace_for_string(prompt)
         try:
             result = child.run(
-                query=CHILD_QUERY,
-                metadata=meta,
+                query=query,
+                metadata=metadata,
                 bindings=bindings,
                 workspace=workspace,
-                mode="string",
+                mode=mode,
                 cleanup_workspace=cleanup,
             )
         except Exception as e:
@@ -343,6 +365,58 @@ class Runtime:
             answer_n_chars=len(result.response),
         )
         return result.response
+
+    def _child_launch(self, prompt: str) -> tuple[
+        str, str, dict[str, Any], Path, str, bool, str | None
+    ]:
+        """Repo/corpus children inherit the workspace; string children bind `context`."""
+        mode = self.mode or "string"
+        if mode == "repo" and self._workspace is not None:
+            repo = self._clone_repo()
+            bindings: dict[str, Any] = {
+                "query": prompt,
+                "repo": repo,
+                "manifest": self._bindings.get("manifest") or "",
+            }
+            metadata = (self._metadata or "") + (
+                "\nYou are a nested RLM with the same repository. "
+                "Do only the subtask. Recurse with rlm_query / repo.explore if needed. "
+                "FINAL a short cited answer.\n"
+            )
+            return prompt, metadata, bindings, self._workspace, "repo", False, "repo"
+        if mode == "research" and self._workspace is not None:
+            corpus = self._clone_corpus()
+            bindings = {
+                "query": prompt,
+                "corpus": corpus,
+                "catalog": self._bindings.get("catalog"),
+            }
+            metadata = (self._metadata or "") + (
+                "\nYou are a nested RLM with the same corpus. "
+                "Do only the subtask. Recurse if needed. FINAL a short cited answer.\n"
+            )
+            return prompt, metadata, bindings, self._workspace, "research", False, "research"
+        workspace, cleanup = workspace_for_string(prompt)
+        bindings = {"query": CHILD_QUERY, "context": prompt}
+        return CHILD_QUERY, string_metadata(prompt), bindings, workspace, "string", cleanup, None
+
+    def _clone_repo(self) -> Any:
+        repo = self._bindings.get("repo")
+        if repo is None:
+            from rlm.domains.repo import Repo
+
+            return Repo(self._workspace)
+        return type(repo)(repo.root, ignore=getattr(repo, "ignore", ()))
+
+    def _clone_corpus(self) -> Any:
+        corpus = self._bindings.get("corpus")
+        if corpus is None:
+            from rlm.domains.corpus import load_corpus
+
+            return load_corpus(self._workspace)
+        from rlm.domains.corpus import Corpus
+
+        return Corpus(list(corpus.docs))
 
     def batched(self, fn, prompts: list[str], model: str | None) -> list[str]:
         results: list[str | None] = [None] * len(prompts)

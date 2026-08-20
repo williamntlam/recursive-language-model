@@ -8,6 +8,9 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 
+from rlm.core.history import route_read_subcall
+from rlm.core.types import RecordAccess
+
 SKIP_DIR_NAMES = frozenset({".git", ".rlm", "__pycache__", ".venv", "venv"})
 TEXT_EXTS = {".md", ".txt", ".rst"}
 HTML_EXTS = {".html", ".htm"}
@@ -15,7 +18,7 @@ PDF_EXTS = {".pdf"}
 
 
 @dataclass
-class Document:
+class Document(RecordAccess):
     id: str
     path: str
     title: str | None
@@ -24,7 +27,7 @@ class Document:
 
 
 @dataclass(frozen=True)
-class SearchHit:
+class SearchHit(RecordAccess):
     doc_id: str
     line_no: int
     snippet: str
@@ -138,6 +141,8 @@ class Corpus:
     def __init__(self, docs: list[Document]) -> None:
         self.docs = docs
         self._by_id = {d.id: d for d in docs}
+        self._query_fn = None
+        self._rlm_fn = None
 
     def search(self, pattern: str) -> list[SearchHit]:
         rx = re.compile(pattern)
@@ -156,6 +161,34 @@ class Corpus:
     def slice(self, id: str, start: int, end: int) -> str:  # noqa: A002
         return self.get(id).text[start:end]
 
+    def ask(
+        self,
+        doc_id: str,
+        question: str,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> str:
+        """Leaf if the slice is small; otherwise a child RLM with the same corpus."""
+        doc = self.get(doc_id)
+        if start is None and end is None:
+            text = doc.text
+            loc = f"{doc_id} ({doc.path})"
+        else:
+            s = 0 if start is None else start
+            e = len(doc.text) if end is None else end
+            text = doc.text[s:e]
+            loc = f"{doc_id}[{s}:{e}] ({doc.path})"
+        return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
+
+    def explore(self, question: str) -> str:
+        """Spawn a child RLM with the same corpus."""
+        fn = self._rlm_fn
+        if fn is None:
+            raise RuntimeError(
+                "corpus.explore requires rlm_query. Call rlm_query(question) instead."
+            )
+        return str(fn(question))
+
 
 def catalog_rows(corpus: Corpus) -> list[dict]:
     return [
@@ -169,7 +202,7 @@ def corpus_manifest(corpus: Corpus, preview: int = 12) -> str:
     lines = [
         f"Corpus: {len(rows)} documents.",
         "Bound as `corpus` and `catalog` (list of id/title/path/n_chars).",
-        "Use corpus.search, corpus.get, corpus.slice. Do not print full documents.",
+        "Use corpus.search, corpus.explore, corpus.ask. Do not print full documents.",
         "Catalog preview:",
     ]
     for row in rows[:preview]:

@@ -1,7 +1,9 @@
+import json
+
 import pytest
 
 from rlm.core.budgets import Budget
-from tests.util import make_rlm, repl
+from tests.util import FIXTURE_REPO, make_rlm, repl
 
 
 def test_reserved_names_restored_after_clobber(tmp_path):
@@ -67,6 +69,25 @@ def test_rlm_query_spawns_child_with_own_env(tmp_path):
     assert out.usage.subcalls >= 1
 
 
+def test_rlm_query_in_repo_mode_child_sees_repo(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            repl(
+                "ans = rlm_query('Grep AUTOCAST_CPU_BF16_IMPL_MARKER; FINAL the path')\n"
+                "FINAL(ans)\n"
+            ),
+            repl(
+                "hits = repo.grep('AUTOCAST_CPU_BF16_IMPL_MARKER')\n"
+                "FINAL(hits[0].path)\n"
+            ),
+        ],
+    )
+    out = rlm.ask_repo(FIXTURE_REPO, "where?")
+    assert "secret.py" in out.response
+    assert out.usage.subcalls >= 1
+
+
 def test_python_fence_is_executed(tmp_path):
     rlm, _ = make_rlm(
         tmp_path,
@@ -103,3 +124,18 @@ def test_parse_error_logs_model_preview(tmp_path):
     events = (out.trajectory / "events.jsonl").read_text(encoding="utf-8")
     assert "parse_error" in events
     assert "I refuse to use a fence." in events
+
+
+def test_instruction_count_does_not_grow_with_observations(tmp_path):
+    script = [repl(f"print({i})\n") for i in range(4)]
+    script.append(repl("FINAL('ok')\n"))
+    rlm, _ = make_rlm(tmp_path, script)
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "ok"
+    counts = []
+    for line in (out.trajectory / "events.jsonl").read_text(encoding="utf-8").splitlines():
+        ev = json.loads(line)
+        if ev.get("kind") == "root_lm" and "instruction_count" in ev:
+            counts.append(ev["instruction_count"])
+    assert counts
+    assert len(set(counts)) == 1

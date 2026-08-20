@@ -94,3 +94,59 @@ def test_parser_skips_json_fence():
 
 def test_parser_returns_none_without_repl_fence():
     assert extract_repl_code("just prose and `code`") is None
+
+
+def test_trailing_expression_is_displayed(tmp_path):
+    rlm, client = make_rlm(
+        tmp_path,
+        [
+            repl("hits = list(range(5))\nlen(hits), hits[:2]\n"),
+            repl("FINAL('ok')\n"),
+        ],
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "ok"
+    second = "\n".join(m.content for m in client.calls[1])
+    assert "(5, [0, 1])" in second or "5" in second and "[0, 1]" in second
+
+
+def test_long_string_expr_is_not_dumped_into_hist(tmp_path):
+    rlm, client = make_rlm(
+        tmp_path,
+        [
+            repl("blob = 'NEEDLESECRET' + 'Z' * 5000\nblob\n"),
+            repl("FINAL('ok')\n"),
+        ],
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "ok"
+    second = "\n".join(m.content for m in client.calls[1])
+    assert "Z" * 800 not in second
+    assert "n_chars=" in second or "not shown" in second
+
+
+def test_parent_hist_keeps_code_not_prose(tmp_path):
+    rlm, client = make_rlm(
+        tmp_path,
+        [
+            "PROSE_SHOULD_NOT_STAY in the parent window.\n```repl\nprint(1)\n```\n",
+            repl("FINAL('x')\n"),
+        ],
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "x"
+    second = "\n".join(m.content for m in client.calls[1])
+    assert "PROSE_SHOULD_NOT_STAY" not in second
+    assert "print(1)" in second
+
+
+def test_old_observations_are_compacted(tmp_path):
+    script = [repl(f"print('DUMP{i}-' + 'W' * 80)\n") for i in range(8)]
+    script.append(repl("FINAL('done')\n"))
+    rlm, client = make_rlm(tmp_path, script, max_observation_chars=400)
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "done"
+    last = "\n".join(m.content for m in client.calls[-1])
+    assert "DUMP0-" not in last
+    assert "compacted" in last
+    assert "DUMP7-" in last

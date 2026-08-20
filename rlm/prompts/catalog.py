@@ -15,10 +15,14 @@ REPO_METHODS = [
     "grep",
     "files",
     "file_text",
+    "ask",
+    "explore",
 ]
 
 CORPUS_METHODS = [
     "search",
     "get",
     "slice",
+    "ask",
+    "explore",
 ]

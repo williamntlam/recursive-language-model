@@ -38,8 +38,8 @@ Top-level:
   pytorch/
   ├── aten/
   └── torch/
-Use repo.tree(), repo.grep(), repo.read(), repo.file_text(path).
-Do not print entire files. Assign them to variables and llm_query slices.
+Use repo.tree(), repo.grep(), repo.read(), repo.ask(path, question, start, end).
+Do not print entire files. Assign them to variables and llm_query slices (prefer repo.ask).
 ```
 
 `Git HEAD` is the short hash from `.git/HEAD` when present, else `none`.
@@ -47,22 +47,26 @@ Do not print entire files. Assign them to variables and llm_query slices.
 ### `Repo` methods
 
 ```python
-repo.tree(max_depth: int = 3, ignore: Sequence[str] | None = None) -> str
+repo.tree(path: str | int | None = None, max_depth: int = 3, ignore: Sequence[str] | None = None) -> str
 repo.glob(pattern: str) -> list[str]
 repo.read(path: str, start: int | None = None, end: int | None = None) -> str
 repo.grep(pattern: str, glob: str | None = None) -> list[GrepHit]
 repo.files() -> list[FileMeta]
 repo.file_text(path: str) -> str
+repo.ask(path: str, question: str, start: int | None = None, end: int | None = None) -> str
+repo.explore(question: str) -> str
 ```
 
 | Method | Behavior |
 |---|---|
-| `tree` | ASCII tree. Ignored junk directories omitted. `max_depth` counts from the root |
+| `tree` | ASCII tree. First arg may be a subdirectory (`repo.tree("src/foo")`) or a depth (`repo.tree(3)`). Junk directories omitted |
 | `glob` | `fnmatch` on relative path or basename |
 | `read` | **1-indexed inclusive** line slice when `start`/`end` given; full file if both omitted |
-| `grep` | Regex over text-ish files. Hits: `path`, `line_no`, `line` (line truncated to 400 chars) |
+| `grep` | Regex over text-ish files. Hits: `path`, `line_no`, `line` (line truncated to 400 chars). Attribute or `h["path"]` / `h[0]` |
 | `files` | `path`, `n_bytes`, `n_lines`, `sha` (16 hex chars) for text-ish files only |
 | `file_text` | Full UTF-8 text as a **value**. Assign it; do not print it |
+| `ask` | Tight slice → `llm_query`; larger read → child RLM with the same repo |
+| `explore` | Always `rlm_query` with this repo. Default way to investigate a file or module |
 
 Paths are resolved under `repo.root`. Escaping the root raises `ValueError` (`Path.relative_to`).
 
@@ -78,7 +82,7 @@ Text-ish detection: known source suffixes, names like `Makefile` / `Dockerfile` 
 
 ### Intended patterns
 
-1. Narrow then read — grep / glob → `read` slices → `llm_query` on a file or span.
+1. Narrow then spawn — grep / glob → `repo.explore` / `rlm_query` per file. `repo.ask` only for a handful of lines.
 2. Map over a module — `llm_query_batched` on each file with the same question.
 3. Follow edges — find a definition, grep for callers.
 4. Aggregate with code over `repo.files()`, not by stuffing the repo into chat.
@@ -102,7 +106,7 @@ Load a directory (or a single file) as `corpus`.
 ```
 Corpus: N documents.
 Bound as `corpus` and `catalog` (list of id/title/path/n_chars).
-Use corpus.search, corpus.get, corpus.slice. Do not print full documents.
+Use corpus.search, corpus.get, corpus.slice, corpus.ask. Do not print full documents.
 Catalog preview:
   doc-0001: 'Title'  path=paper_a.md  n_chars=1234
   ...
@@ -137,6 +141,8 @@ If `pypdf` is missing, PDFs are skipped. Sidecar `.pdf.rlm.txt` files are gitign
 corpus.search(pattern: str) -> list[SearchHit]   # doc_id, line_no, snippet[:400]
 corpus.get(id: str) -> Document                  # id, path, title, text, n_chars
 corpus.slice(id: str, start: int, end: int) -> str   # Python character slice
+corpus.ask(doc_id: str, question: str, start: int | None = None, end: int | None = None) -> str
+corpus.explore(question: str) -> str
 ```
 
 `Document.text` is the full extracted string. Assign it; slice it; `llm_query` a piece. Do not print the whole document.
@@ -144,7 +150,7 @@ corpus.slice(id: str, start: int, end: int) -> str   # Python character slice
 ### Intended patterns
 
 1. Filter with regex / keywords from the query.
-2. Map `llm_query` over remaining docs: extract claims with quotes.
+2. Spawn `corpus.explore` / `rlm_query` (or `rlm_query_batched`) per remaining document.
 3. Reduce in the root (or a second-stage `rlm_query`) over claim objects.
 4. Cite from structured records `{doc_id, span, claim}` assembled in a variable.
 5. Ignore distractors that do not bear on the query.

@@ -15,7 +15,7 @@ RLM : (query: str, context: Context) → response: str
 - its own previous code cells
 - **truncated** REPL stdout/stderr
 
-It writes Python. That Python peeks and slices the bound data, stores intermediate results in variables, and calls `llm_query` / `rlm_query` on snippets that already fit. The final answer can be a long string sitting in a REPL variable (`FINAL_VAR`), so output length is not bounded by the root window.
+It writes Python. That Python peeks and slices the bound data, stores intermediate results in variables, and calls `llm_query` / `repo.ask` / `rlm_query` on snippets that already fit. The parent does not read file bodies; a leaf does. The final answer can be a long string sitting in a REPL variable (`FINAL_VAR`), so output length is not bounded by the root window.
 
 ## Why not bigger windows, RAG, or ReAct
 
@@ -57,8 +57,9 @@ These are not suggestions. Config may **lower** the numeric ceilings; it cannot 
 
 Depth is however many nested RLMs the context needs, not a fixed tree of 1.
 
-- `llm_query(prompt)` — one plain completion. No REPL. Cheap (`gpt-5-mini` by default). Use when the snippet already fits and the job is extract / classify / summarize.
-- `rlm_query(prompt)` — spawn a child RLM with its own REPL and Docker container. Use when the subtask is still large or still needs code.
+- `llm_query(prompt)` — one plain completion. No REPL. Cheap (`gpt-5-mini` by default). Use on a tight snippet that already fits.
+- `rlm_query(prompt)` — spawn a child RLM with its own REPL and Docker container. **Default** for a file, document, or subproblem. In `ask` / `research`, the child inherits the same `repo` / `corpus` (the subtask string is the query, not a dump of the file). In string `completion`, the prompt is bound as the child's `context`.
+- Fan out: one child per file (`repo.explore` / `rlm_query_batched`). Recurse again inside a child if the piece is still large.
 - `max_depth` (default **16**) is a **safety cap**, not the operating point. At the cap, `rlm_query` degrades to `llm_query` **only if** the prompt is under 100k tokens. Otherwise it returns an error: slice smaller at this level.
 
 ## Two products, one runtime
@@ -66,7 +67,7 @@ Depth is however many nested RLMs the context needs, not a fixed tree of 1.
 | | `rlm ask <path>` | `rlm research <path>` | `rlm.completion` |
 |---|---|---|---|
 | Bound object | `repo` | `corpus` | `context` (string) |
-| Peek API | `tree`, `glob`, `grep`, `read`, `file_text` | `search`, `get`, `slice` | slices, regex, `len` |
+| Peek API | `tree`, `glob`, `grep`, `read`, `file_text`, `ask`, `explore` | `search`, `get`, `slice`, `ask`, `explore` | slices, regex, `len` |
 | v0 will not | edit, test, commit, LSP | live web, DOI graphs | — |
 
 There is **no bash**. Exploration is Python helpers inside Docker.

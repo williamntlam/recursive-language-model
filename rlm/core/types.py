@@ -2,8 +2,26 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, fields
 from pathlib import Path
+
+
+class RecordAccess:
+    """Let models use hit.path, hit["path"], or hit[0] on REPL records."""
+
+    def __getitem__(self, key: str | int):
+        names = [f.name for f in fields(self)]
+        if isinstance(key, int):
+            return getattr(self, names[key])
+        if isinstance(key, str):
+            if key in names:
+                return getattr(self, key)
+            raise KeyError(key)
+        raise TypeError(f"index must be str or int, got {type(key).__name__}")
+
+    def __iter__(self):
+        for f in fields(self):
+            yield getattr(self, f.name)
 
 
 @dataclass

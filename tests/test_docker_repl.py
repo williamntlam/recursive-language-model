@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import inspect
+
 import pytest
 
 from rlm.api import RLM
@@ -48,6 +50,18 @@ def test_completion_without_daemon_fails_and_does_not_host_exec(monkeypatch, tmp
     with pytest.raises(StartupError, match="Docker"):
         rlm.completion("q", "hello-context")
     assert executed["host"] is False
+
+
+def test_callback_server_does_not_shadow_thread_handle():
+    """Python 3.13 Thread.__init__ sets self._handle to a _ThreadHandle."""
+    from rlm.environments.docker import CallbackServer
+
+    names = {
+        name
+        for name, _ in inspect.getmembers(CallbackServer, predicate=inspect.isfunction)
+    }
+    assert "_handle" not in names
+    assert "_serve_request" in names
 
 
 @requires_docker

@@ -14,8 +14,8 @@ loop i in 0 .. max_iterations-1:
     lm      ← root_model.complete(hist)
     code    ← last ```repl``` fence
     obs     ← env.execute(code)
-    hist    ← hist ‖ assistant(lm) ‖ user(truncated stdout)
-    if FINAL set: return it
+    hist    ← hist ‖ assistant(code cell) ‖ user(truncated stdout)
+    compact older pairs; if FINAL set: return it
 abort: max_iterations without FINAL_VAR
 ```
 
@@ -42,20 +42,24 @@ A successful cell resets the consecutive-error counter.
 
 This is the subsystem naive agent ports get wrong.
 
-Each observation appended to `hist` is:
+Each observation appended to `hist` is truncated stdout (and stderr). A trailing
+expression is shown as a **compact repr** (long strings become a length/hash
+preview, not the body). Empty cells get a short hint instead of silence.
 
-```
-<stdout truncated to max_observation_chars>
-...[truncated, total_len=L, sha256=…]
---- stderr ---
-<stderr truncated similarly>
-```
+The parent stores **executed code cells**, not the model's surrounding prose.
+
+After `HIST_KEEP_RECENT` (6) code/observation pairs, older pairs are replaced
+with stubs (`compacted cell` / `compacted observation`). Values stay in the
+REPL. If the next parent send would exceed `PARENT_TOKEN_NUDGE` (2500 tokens),
+the observation includes a reminder to `llm_query` / `repo.ask` / `corpus.ask`
+instead of printing file bodies.
 
 Never appended:
 
 - the full `context` / repo dump / document bodies
 - full file contents (they stay in variables)
 - full sub-call transcripts (only the child **answer string** returns into a variable; the parent sees it if the model **prints** it, still truncated)
+- the model's pre-fence reasoning (only the `repl` cell is kept)
 
 If `hist` itself would be 100k tokens or more on the next parent call, **do not send**. Do not summarize the corpus. Raise `PromptBudgetError` (CLI exit 2). Observation truncation exists so this abort should be rare; if it is common, lower `max_observation_chars`. Compacting the source data is how rot re-enters.
 
@@ -118,8 +122,10 @@ Exposed-method catalogs live in `rlm/prompts/catalog.py`.
 
 1. `child_depth = depth + 1`.
 2. If `child_depth > max_depth`: degrade to `llm_query` **only if** the prompt is under 100k; else return `Error: depth cap; slice smaller…`.
-3. Else spawn a new `Runtime` with `budget.inherit()`, `domain=None`, string mode: the prompt is bound as `context` with a fixed child query (“Execute the task described in the `context` variable…”).
-4. Own container (product path) or own `FakeEnv` (tests).
+3. Else spawn a new `Runtime` with `budget.inherit()`:
+   - **repo / research:** same workspace and domain. The prompt is the child's *query*. The child can `grep` / `explore` further. File bytes never enter the parent prompt.
+   - **string:** the prompt is bound as `context` with a fixed child query (“Execute the task described in the `context` variable…”).
+4. Own container (product path) or own `FakeEnv` (tests). Each child clones `repo` / `corpus` so `_query_fn` is not shared across concurrent batches.
 5. Fold child spent USD / tokens / iterations / subcalls into the parent budget.
 6. Return `result.response` (not the child trajectory dump).
 

@@ -37,6 +37,10 @@ Batch helpers are **index-aligned** and **per-item failure tolerant**: one faile
 
 `SHOW_VARS()` lists names with a size hint (`str n_chars=…`, `list len=…`) without dumping values.
 
+`repo.ask(path, question, start=None, end=None)` and `corpus.ask(...)` read a slice: a tight span goes to `llm_query`, a larger read spawns `rlm_query`. `repo.explore(question)` / `corpus.explore(question)` always spawn a child RLM that **inherits the same repo or corpus**. Prefer `explore` over printing `repo.read`.
+
+A cell's **last expression** is displayed like a notebook (compact repr). `FINAL` / `FINAL_VAR` as the last expression are not displayed. `print` of a large string is truncated in the container before it reaches the host.
+
 ### Finish protocol
 
 Any of these ends the loop and becomes `Completion.response`:
@@ -73,7 +77,7 @@ The container image does not include the OpenAI SDK.
 
 `rlm.repl_ns.run_cell`:
 
-1. `compile` + `exec` in the namespace with stdout/stderr redirected.
+1. `compile` + `exec` in the namespace with stdout/stderr redirected. If the last statement is an expression (and not `FINAL` / `FINAL_VAR`), it is evaluated and shown as a compact repr.
 2. In the container, `SIGALRM` kills the cell after `cell_timeout_s` (remaining wall-clock budget, else 60s). `FakeEnv` does not use alarms.
 3. Restore reserved names.
 4. Return an `Observation`: truncated stdout/stderr (sent to the host), full lengths, sha256 of stdout, optional `final`, optional traceback in `error`.
@@ -93,7 +97,7 @@ Sockets (unix, under a host temp dir mounted at `/ipc`):
 
 Init payload: `query`, `mode` (`string` / `repo` / `research`), `max_stdout_chars`, `cell_timeout_s`. The container binds workspace objects, then ACKs.
 
-Image: `rlm-repl:0.1.0`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
+Image: `rlm-repl:0.1.4`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
 
 ## Isolation recap
 

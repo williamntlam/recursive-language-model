@@ -2,15 +2,17 @@
 
 from __future__ import annotations
 
+import ast
 import hashlib
 import io
 import signal
+import sys
 import traceback
 from collections.abc import Callable
 from contextlib import redirect_stderr, redirect_stdout
 from typing import Any
 
-from rlm.core.history import sha256_text
+from rlm.core.history import DISPLAY_MAX_CHARS, compact_repr, sha256_text
 from rlm.core.types import Observation
 
 RESERVED_NAMES = (
@@ -135,6 +137,24 @@ def create_namespace(
     for banned in ("exec", "eval", "compile", "open", "breakpoint", "exit", "quit", "help"):
         safe_builtins.pop(banned, None)
     safe_builtins["__import__"] = _restricted_import
+
+    def bounded_print(*args: Any, **kwargs: Any) -> None:
+        file = kwargs.pop("file", None)
+        buf = io.StringIO()
+        _builtins.print(*args, file=buf, **kwargs)
+        text = buf.getvalue()
+        cap = int(ns.get("_max_stdout_chars") or 4000)
+        total = len(text)
+        if total > cap:
+            text = (
+                text[:cap]
+                + f"\n...[print truncated, total_len={total}; "
+                "assign to a variable and llm_query; do not print large strings]\n"
+            )
+        dest = file if file is not None else sys.stdout
+        dest.write(text)
+
+    safe_builtins["print"] = bounded_print
     ns["__builtins__"] = safe_builtins
     ns["__name__"] = "rlm_repl"
 
@@ -190,7 +210,68 @@ def create_namespace(
         if key == "context" and "context_0" not in bindings:
             ns["context_0"] = value
 
+    _bind_subcall_fns(ns.get("repo"), llm_query, rlm_query)
+    _bind_subcall_fns(ns.get("corpus"), llm_query, rlm_query)
+
     return ns
+
+
+def _bind_subcall_fns(obj: Any, llm_fn: Callable[..., str], rlm_fn: Callable[..., str]) -> None:
+    if obj is None:
+        return
+    if hasattr(obj, "ask"):
+        obj._query_fn = llm_fn
+    if hasattr(obj, "explore"):
+        obj._rlm_fn = rlm_fn
+
+
+def _is_final_call(node: ast.Expr) -> bool:
+    value = node.value
+    return (
+        isinstance(value, ast.Call)
+        and isinstance(value.func, ast.Name)
+        and value.func.id in {"FINAL", "FINAL_VAR"}
+    )
+
+
+def _split_last_expression(code: str) -> tuple[ast.Module | None, ast.Expression | None]:
+    """If the last statement is a non-FINAL expression, return (prefix module, expr)."""
+    try:
+        tree = ast.parse(code, filename="<repl>")
+    except SyntaxError:
+        return None, None
+    if not tree.body or not isinstance(tree.body[-1], ast.Expr):
+        return None, None
+    last = tree.body[-1]
+    assert isinstance(last, ast.Expr)
+    if _is_final_call(last):
+        return None, None
+    tree.body = tree.body[:-1]
+    ast.fix_missing_locations(tree)
+    expr = ast.Expression(last.value)
+    ast.fix_missing_locations(expr)
+    return tree, expr
+
+
+def _exec_cell(code: str, ns: dict[str, Any], buf_out: io.StringIO, max_send_chars: int) -> None:
+    prefix, expr = _split_last_expression(code)
+    if prefix is None or expr is None:
+        compiled = compile(code, "<repl>", "exec")
+        exec(compiled, ns, ns)  # noqa: S102 — product REPL; FakeEnv is tests-only
+        return
+    if prefix.body:
+        exec(compile(prefix, "<repl>", "exec"), ns, ns)  # noqa: S102
+    value = eval(compile(expr, "<repl>", "eval"), ns, ns)  # noqa: S307
+    if value is None:
+        return
+    cap = min(DISPLAY_MAX_CHARS, max_send_chars)
+    text = compact_repr(value, max_chars=cap)
+    existing = buf_out.getvalue()
+    if existing and not existing.endswith("\n"):
+        buf_out.write("\n")
+    buf_out.write(text)
+    if not text.endswith("\n"):
+        buf_out.write("\n")
 
 
 def run_cell(
@@ -216,8 +297,7 @@ def run_cell(
                 old_handler = signal.signal(signal.SIGALRM, _alarm)
                 signal.setitimer(signal.ITIMER_REAL, timeout_s)
             try:
-                compiled = compile(code, "<repl>", "exec")
-                exec(compiled, ns, ns)  # noqa: S102 — product REPL; FakeEnv is tests-only
+                _exec_cell(code, ns, buf_out, max_send_chars)
             finally:
                 if use_alarm and timeout_s and timeout_s > 0:
                     signal.setitimer(signal.ITIMER_REAL, 0)

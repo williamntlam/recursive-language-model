@@ -15,7 +15,7 @@ from rlm.errors import StartupError
 from rlm.ipc import read_msg, write_msg
 from rlm.repl_ns import SubcallHandler
 
-IMAGE_TAG = "rlm-repl:0.1.0"
+IMAGE_TAG = "rlm-repl:0.1.4"
 
 
 def docker_client():
@@ -80,9 +80,14 @@ class CallbackServer(threading.Thread):
                 continue
             except OSError:
                 break
-            threading.Thread(target=self._handle, args=(conn,), daemon=True).start()
+            # Do not name this `_handle`: on Python 3.13 Thread instances store
+            # the OS handle in `_handle`, so `target=self._handle` would pass
+            # a `_ThreadHandle` instead of the request method.
+            threading.Thread(
+                target=self._serve_request, args=(conn,), daemon=True
+            ).start()
 
-    def _handle(self, conn: socket.socket) -> None:
+    def _serve_request(self, conn: socket.socket) -> None:
         try:
             req = read_msg(conn)
             typ = req.get("type")

@@ -9,6 +9,9 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
+from rlm.core.history import route_read_subcall
+from rlm.core.types import RecordAccess
+
 DEFAULT_IGNORE_DIR_NAMES = frozenset(
     {
         ".git",
@@ -136,7 +139,7 @@ TEXT_SUFFIXES = frozenset(
 
 
 @dataclass(frozen=True)
-class FileMeta:
+class FileMeta(RecordAccess):
     path: str
     n_bytes: int
     n_lines: int
@@ -144,7 +147,7 @@ class FileMeta:
 
 
 @dataclass(frozen=True)
-class GrepHit:
+class GrepHit(RecordAccess):
     path: str
     line_no: int
     line: str
@@ -212,12 +215,31 @@ def git_head(root: Path) -> str:
     return raw[:12]
 
 
+def _looks_int(value: object) -> bool:
+    if isinstance(value, bool):
+        return False
+    if isinstance(value, int):
+        return True
+    if isinstance(value, str):
+        stripped = value.strip()
+        return bool(stripped) and stripped.lstrip("+-").isdigit()
+    return False
+
+
+def _coerce_int(value: int | str, name: str) -> int:
+    if not _looks_int(value):
+        raise TypeError(f"{name} must be an int, got {value!r}")
+    return int(value)
+
+
 class Repo:
     def __init__(self, root: str | Path, ignore: Sequence[str] | None = None) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
             raise FileNotFoundError(f"repo path does not exist: {self.root}")
         self.ignore = tuple(ignore or ())
+        self._query_fn = None
+        self._rlm_fn = None
 
     def _rel(self, path: Path) -> str:
         return path.resolve().relative_to(self.root).as_posix()
@@ -236,15 +258,36 @@ class Repo:
                     continue
                 yield base / name
 
-    def tree(self, max_depth: int = 3, ignore: Sequence[str] | None = None) -> str:
+    def tree(
+        self,
+        path: str | int | None = None,
+        max_depth: int | str = 3,
+        ignore: Sequence[str] | None = None,
+    ) -> str:
         extra = tuple(ignore) if ignore is not None else self.ignore
+        sub: str | None = None
+        if path is None:
+            depth_limit = _coerce_int(max_depth, "max_depth")
+        elif _looks_int(path):
+            depth_limit = _coerce_int(path, "max_depth")
+        else:
+            sub = str(path)
+            depth_limit = _coerce_int(max_depth, "max_depth")
+        start = self._safe(sub) if sub else self.root
+        if not start.is_dir():
+            raise NotADirectoryError(
+                f"repo.tree() expected a directory, got {self._rel(start)!r}. "
+                "Use repo.read(path) or repo.glob(pattern) for files."
+            )
         lines: list[str] = []
 
         def rec(current: Path, depth: int, prefix: str) -> None:
-            if depth > max_depth:
+            if depth > depth_limit:
                 return
             try:
-                entries = sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
+                entries = sorted(
+                    current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
+                )
             except OSError:
                 return
             visible = []
@@ -259,11 +302,11 @@ class Repo:
                 branch = "└── " if last else "├── "
                 label = ent.name + ("/" if ent.is_dir() else "")
                 lines.append(prefix + branch + label)
-                if ent.is_dir() and depth < max_depth:
+                if ent.is_dir() and depth < depth_limit:
                     rec(ent, depth + 1, prefix + ("    " if last else "│   "))
 
-        lines.append(self.root.name + "/")
-        rec(self.root, 1, "")
+        lines.append((start.name if sub else self.root.name) + "/")
+        rec(start, 1, "")
         return "\n".join(lines)
 
     def glob(self, pattern: str) -> list[str]:
@@ -278,16 +321,45 @@ class Repo:
         target = self._safe(path)
         return target.read_text(encoding="utf-8", errors="replace")
 
-    def read(self, path: str, start: int | None = None, end: int | None = None) -> str:
+    def read(
+        self,
+        path: str,
+        start: int | str | None = None,
+        end: int | str | None = None,
+    ) -> str:
         text = self.file_text(path)
         if start is None and end is None:
             return text
         lines = text.splitlines(keepends=True)
-        s = (1 if start is None else start) - 1
-        e = len(lines) if end is None else end
+        s = (1 if start is None else _coerce_int(start, "start")) - 1
+        e = len(lines) if end is None else _coerce_int(end, "end")
         s = max(0, s)
         e = min(len(lines), e)
         return "".join(lines[s:e])
+
+    def ask(
+        self,
+        path: str,
+        question: str,
+        start: int | str | None = None,
+        end: int | str | None = None,
+    ) -> str:
+        """Read a slice; leaf if small, otherwise a child RLM that inherits this repo."""
+        text = self.read(path, start, end)
+        if start is None and end is None:
+            loc = path
+        else:
+            loc = f"{path}:{start or 1}-{end or 'end'}"
+        return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
+
+    def explore(self, question: str) -> str:
+        """Spawn a child RLM with the same repo. Prefer this over reading files here."""
+        fn = self._rlm_fn
+        if fn is None:
+            raise RuntimeError(
+                "repo.explore requires rlm_query. Call rlm_query(question) instead."
+            )
+        return str(fn(question))
 
     def grep(self, pattern: str, glob: str | None = None) -> list[GrepHit]:
         rx = re.compile(pattern)
@@ -345,8 +417,9 @@ def repo_manifest(repo: Repo) -> str:
         f"Repository: {repo.root}\n"
         f"Files: {len(files):,}  |  Text-ish bytes: {total}  |  Git HEAD: {head}\n"
         f"Top-level:\n{top}\n"
-        "Use repo.tree(), repo.grep(), repo.read(), repo.file_text(path).\n"
-        "Do not print entire files. Assign them to variables and llm_query slices.\n"
+        "Use repo.tree(), repo.grep(), repo.explore(question), "
+        "repo.ask(path, question, start, end).\n"
+        "Do not print entire files. Spawn a child RLM per file; llm_query only tight slices.\n"
     )
 
 
