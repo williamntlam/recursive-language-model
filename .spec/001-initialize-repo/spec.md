@@ -120,10 +120,13 @@ Each REPL turn returns only **constant-size metadata** about stdout: a short pre
 
 ### 4.4 Recursion depth
 
-- `llm_query(prompt)` — one plain completion. No REPL. Cheap. Use for extract / classify / summarize a snippet that already fits.
-- `rlm_query(prompt)` — spawn a child RLM with its own REPL. Use when the subtask itself is long or needs code.
-- At `max_depth`, `rlm_query` degrades to `llm_query`.
-- v0 default: `max_depth = 1` (root RLM, leaf LLM), matching the paper's main experiments. Depth > 1 is supported in the runtime but not required for the first evals.
+Depth is **however many nested RLMs the context needs**, not a fixed tree of 1.
+
+- `llm_query(prompt)` — one plain completion. No REPL. Cheap. Use when the snippet **already fits** (`< 100k`) and the job is extract / classify / summarize.
+- `rlm_query(prompt)` — spawn a child RLM with its own REPL (and its own Docker container). Use when the subtask is still large, still needs code (grep/slice/loop), or would not fit in a single leaf call.
+- Keep calling `rlm_query` on leftovers until every LM payload is under 100k. A 300k-line repo might be depth 0 only (parent maps `llm_query` over files). A single 2M-token dump that must be refined in stages may go depth 2, 3, … as each child slices further.
+- **`max_depth` is a safety cap, not the operating point.** Default: `16`. The user may raise it. Recursion also stops when remaining budget or timeout hits zero.
+- At `max_depth`, `rlm_query` degrades to `llm_query` **only if** that prompt is `< 100k`. If it still does not fit, do not send; return an error to the caller (“depth cap; slice smaller at this level”). Never break the 100k rule to “finish the tree.”
 
 ### 4.5 Empirical targets from the paper (orientation, not v0 gates)
 
@@ -190,7 +193,7 @@ This is the paper's default path and the regression surface for the core runtime
 3. **Truncate observations, never the source.** Stdout shown to the model is capped. The underlying variable is not.
 4. **Budgets are hierarchical.** A child inherits *remaining* timeout / USD / tokens, not the original totals.
 5. **Trajectories are the unit of debugging.** If an answer is wrong, a human must be able to see which slices were read and which sub-calls were made.
-6. **Cheap leaves, expensive root.** Default OpenAI routing: `gpt-5` at depth 0, `gpt-5-mini` for `llm_query`. This is how the paper stayed cost-competitive. Both must be OpenAI model ids.
+6. **Cheap leaves, expensive RLMs.** Any node with a REPL (parent or nested `rlm_query`) uses `gpt-5` by default. `llm_query` leaves use `gpt-5-mini`. Both must be OpenAI model ids.
 7. **Don't rot the root with success.** Even a correct long session must not grow `hist` without bound. Cap per-turn observation size and max iterations; if the root needs more memory, it must write variables, not reread transcripts.
 8. **The REPL runs in Docker.** Model-generated Python never `exec`s in the host process. The OpenAI key stays on the host; the container reaches it only through a narrow LM-callback channel.
 
@@ -235,7 +238,7 @@ The runtime owns the loop, not the model. Responsibilities:
 - Append truncated stdout/stderr to `hist`.
 - Detect completion, errors, stalls (repeated identical code), and budget exhaustion.
 - **Refuse to send** any LM request that would exceed the prompt-token or instruction ceilings (§7.5).
-- Spawn child RLMs for `rlm_query`, each with its own container, callback port, and remaining budget.
+- Spawn child RLMs for `rlm_query`, each with its own container, callback port, and remaining budget. Depth grows as the context requires, up to `max_depth`.
 
 Hard ceilings (may be *lowered* by config, never raised):
 
@@ -248,7 +251,7 @@ Recommended v0 limits (overridable, including upward unless they would violate t
 
 | Limit | Default | Why |
 |---|---|---|
-| `max_depth` | 1 | Matches paper; enough for CodeQA and research map-reduce |
+| `max_depth` | **16** (safety; raise if needed) | Recurse as deep as the context requires. Cap prevents infinite container spawn |
 | `max_iterations` | 30 | Prevents infinite peek loops |
 | `max_observation_chars` | 2000–4000 | Forces variable use; also the main lever to stay far below 100k |
 | `max_concurrent_subcalls` | 8 | Batch maps without melting the API |
@@ -274,8 +277,8 @@ class OpenAIClient:
 
 | Role | Default | Override |
 |---|---|---|
-| Root (`depth = 0`) | `gpt-5` | `root_model` / `--root-model` |
-| Leaves (`llm_query`, and `rlm_query` at `max_depth`) | `gpt-5-mini` | `leaf_model` / `--leaf-model` |
+| Any RLM node (has a REPL), including the parent | `gpt-5` | `root_model` / `--root-model` |
+| Leaves (`llm_query` only) | `gpt-5-mini` | `leaf_model` / `--leaf-model` |
 
 Both values are OpenAI model ids. The user can point them at whatever their key can call (`gpt-4.1`, `gpt-4.1-mini`, etc.) without changing code.
 
@@ -320,7 +323,7 @@ bind-mount repo/corpus (ro)  ─────────────────
 | PIDs | 256 | |
 | Cell timeout | inherits remaining `max_timeout_s`; otherwise 60s per cell | Hung `while True` dies |
 
-**Lifecycle.** `completion()` starts one container, keeps a single Python interpreter alive so the namespace persists across cells, and `stop` + `rm` in `finally`. Default `max_depth = 1` means only the root needs a REPL container (`llm_query` is a host OpenAI call, no child REPL). If `max_depth > 1`, each child RLM gets **its own** container and callback port. Never Docker-in-Docker.
+**Lifecycle.** `completion()` starts one container, keeps a single Python interpreter alive so the namespace persists across cells, and `stop` + `rm` in `finally`. Each `rlm_query` child is a full RLM: **its own** container and callback port. Never Docker-in-Docker. Depth is whatever the context needs, up to `max_depth`. Prefer *breadth* at a given level (`llm_query_batched` over many files) and extra *depth* only when a piece is still too large or still needs code.
 
 **How context enters the container.** Do not pickle host objects across the boundary.
 
@@ -571,7 +574,7 @@ rlm = RLM(
     root_model="gpt-5",          # OpenAI
     leaf_model="gpt-5-mini",     # OpenAI
     environment="docker",        # required for real completions
-    max_depth=1,
+    max_depth=16,                # safety cap; recurse as needed below this
     max_iterations=30,
     max_prompt_tokens=99_999,   # hard max; smaller is allowed
     max_instructions=150,       # ceiling; smaller is allowed
@@ -605,38 +608,91 @@ rlm ask ./repo --max-budget 2.00 --leaf-model gpt-5-mini -- "..."
 rlm ask ./repo --dry-run -- "..."     # show manifest + prompt, no API calls
 ```
 
-Global flags: `--root-model`, `--leaf-model`, `--max-depth`, `--max-iterations`, `--max-prompt-tokens`, `--max-instructions`, `--max-budget`, `--timeout`, `--log-dir`, `--verbose`.
+Global flags: `--root-model`, `--leaf-model`, `--max-depth`, `--max-iterations`, `--max-prompt-tokens`, `--max-instructions`, `--max-budget`, `--timeout`, `--log-dir`, `--verbose`, `--config <path>`.
+
+`--config` points at an explicit `*.toml`, `*.yaml`, or `*.yml` file. When set, cwd auto-discovery is skipped.
 
 There is no `--env local`. The REPL is Docker. `--dry-run` still runs on the host (manifest + prompt only, no container, no API calls).
 
 `--max-prompt-tokens` and `--max-instructions` may only go **down** from 99,999 and 150. `100_000` or higher is a config error.
 
-Exit codes: `0` success, `2` budget/timeout (including prompt-token abort), `3` REPL errors exhausted, `4` user/config error (including instruction-budget / illegal ceiling / Docker not running).
+Exit codes: `0` success, `2` budget/timeout (including prompt-token abort), `3` REPL errors exhausted, `4` user/config error (including instruction-budget / illegal ceiling / Docker not running / both toml and yaml present).
 
 ### 9.3 Configuration
 
-Resolved in order: CLI flags > `rlm.toml` in cwd > env vars > defaults.
+All tunables (models, depth, budgets, observation cap, log dir, environment) can live in a **TOML or YAML** file. The two formats are equivalent: same keys, same types, same validation. Pick whichever you prefer.
 
-```toml
-# rlm.toml
-root_model = "gpt-5"
-leaf_model = "gpt-5-mini"
-environment = "docker"
-max_depth = 1
-max_iterations = 30
-max_observation_chars = 3000
-max_prompt_tokens = 99999
-max_instructions = 150
-log_dir = ".rlm/logs"
-```
+**Discovery (cwd), first match wins only if exactly one family exists:**
 
-Auth is **not** in `rlm.toml`. Required:
+| File | Format |
+|---|---|
+| `rlm.toml` | TOML |
+| `rlm.yaml` or `rlm.yml` | YAML |
+
+If both a TOML file and a YAML file are in cwd, fail at startup (exit `4`) with a message to keep one or pass `--config`. `rlm.yaml` and `rlm.yml` together is the same error.
+
+**Precedence (later does not override earlier):**
+
+1. CLI flags (and `RLM(...)` constructor kwargs)
+2. `--config` / `RLM.from_config(path)` if given
+3. Auto-discovered `rlm.toml` **or** `rlm.yaml` / `rlm.yml` in cwd
+4. Non-secret env overrides if we add any (none required in v0 besides auth)
+5. Built-in defaults
+
+Auth is **never** in TOML or YAML. Required:
 
 ```
 OPENAI_API_KEY=sk-...
 ```
 
 Optional: `OPENAI_ORG_ID`, `OPENAI_PROJECT`. Ship a `.env.example` with empty keys; add `.env` to `.gitignore`. Document this in the README. Missing key → startup error, no API call.
+
+**TOML** (`rlm.toml`):
+
+```toml
+root_model = "gpt-5"
+leaf_model = "gpt-5-mini"
+environment = "docker"
+max_depth = 16
+max_iterations = 30
+max_observation_chars = 3000
+max_prompt_tokens = 99999
+max_instructions = 150
+max_budget_usd = 2.00          # optional
+max_timeout_s = 120            # optional
+log_dir = ".rlm/logs"
+```
+
+**YAML** (`rlm.yaml` or `rlm.yml`) — same properties:
+
+```yaml
+root_model: gpt-5
+leaf_model: gpt-5-mini
+environment: docker
+max_depth: 16
+max_iterations: 30
+max_observation_chars: 3000
+max_prompt_tokens: 99999
+max_instructions: 150
+max_budget_usd: 2.00          # optional
+max_timeout_s: 120            # optional
+log_dir: .rlm/logs
+```
+
+Unknown keys are a config error (do not silently ignore). Type errors (string where int expected) are a config error. Raising `max_prompt_tokens` or `max_instructions` above the hard ceilings is a config error.
+
+Python:
+
+```python
+# kwargs
+rlm = RLM(root_model="gpt-5", max_depth=16)
+
+# or a file
+rlm = RLM.from_config("rlm.yaml")
+rlm = RLM.from_config("rlm.toml")
+```
+
+Implementation: `tomllib` (stdlib, 3.12+) for TOML; `PyYAML` for YAML. One `Config` dataclass; both loaders fill it. Tests must assert a given TOML file and its YAML twin produce equal `Config` objects.
 
 ---
 
@@ -649,9 +705,11 @@ recursive-language-model/
 ├── .spec/
 │   └── 001-initialize-repo.md      # this document
 ├── README.md
-├── pyproject.toml                  # package: rlm (or recursive_lm); deps: openai, tiktoken, docker
+├── pyproject.toml                  # package: rlm (or recursive_lm); deps: openai, tiktoken, docker, pyyaml
 ├── uv.lock
 ├── .env.example                    # OPENAI_API_KEY=
+├── rlm.toml.example                # same keys as rlm.yaml.example
+├── rlm.yaml.example
 ├── .gitignore                      # includes .env
 ├── docker/
 │   ├── Dockerfile                  # rlm-repl image: python 3.12-slim, REPL server
@@ -686,6 +744,7 @@ recursive-language-model/
 ├── tests/
 │   ├── test_history_policy.py
 │   ├── test_prompt_guard.py        # never send >=100k tokens or >150 instructions
+│   ├── test_config.py              # toml ↔ yaml equivalence; both-present error
 │   ├── test_runtime_loop.py        # fake LM client + FakeEnv
 │   ├── test_docker_repl.py         # marked; requires Docker daemon
 │   ├── test_repo_env.py
@@ -754,9 +813,9 @@ Work is sequenced so each phase is usable and testable. Do not start evals befor
 - Python package skeleton, `uv`, Ruff, pytest, `.gitignore`
 - README: what an RLM is, why this repo exists, how to run a stub, `OPENAI_API_KEY`, Docker required
 - `.env.example`, `.gitignore` including `.env`
-- Config + CLI stubs
+- Config + CLI stubs (`rlm.toml` **and** `rlm.yaml` loaders)
 - `docker/Dockerfile` stub
-- Dependency: `openai`, `tiktoken`, `docker`
+- Dependency: `openai`, `tiktoken`, `docker`, `pyyaml` (`tomllib` is stdlib)
 
 **Exit:** `uv run pytest` passes on empty/placeholder tests; `rlm --help` works.
 
@@ -805,7 +864,7 @@ Work is sequenced so each phase is usable and testable. Do not start evals befor
 ### Phase 5 — Hardening
 
 - Stall detection, max errors, dry-run
-- `rlm.toml`
+- Config discovery polish (`--config`, both-files-present error)
 - Usage footer, budget abort
 - Image digest pinning, tighter seccomp/cap-drop if easy
 - README cookbook (good queries, cost expectations, Docker Desktop notes, when *not* to use RLM — short prompts are often worse, as in the paper)
@@ -830,7 +889,6 @@ Optional later: LongBench-v2 CodeQA, BrowseComp-Plus style corpora, if licensing
 ### Phase 7 — Later (explicitly not now)
 
 - Train a small root model on traces (paper Appendix A: ~1k traces, improve REPL discipline)
-- Depth > 1 as default for huge repos
 - Mutation tools (edit, test, commit) on top of the same runtime
 - Live web tools
 - UI / notebook frontend
@@ -857,6 +915,7 @@ Must-have tests:
 12. **Missing OpenAI key:** constructing a real `OpenAIClient` without `OPENAI_API_KEY` fails before any HTTP. FakeClient does not need a key.
 13. **Docker is the only product REPL:** `completion()` without a daemon fails; it does not `exec` on the host. FakeEnv is unused by the CLI.
 14. **Key and network stay out of the container:** Docker test asserts `OPENAI_API_KEY` is unset inside and outbound HTTP to a public URL fails.
+15. **Config formats:** a `rlm.toml` and equivalent `rlm.yaml` load to the same `Config`. Both files in cwd → error. `--config` wins. A key in the file is not an API key; `OPENAI_API_KEY` in YAML/TOML is rejected.
 
 Use a deterministic `FakeClient` and `FakeEnv` that return queued code strings / observations. Default CI does not require network or an API key. Docker tests are marked and skipped when the daemon is absent; they **are** required in the environment that ships a release.
 
@@ -900,7 +959,7 @@ Resolve during Phase 0–1 implementation, not by blocking this spec:
 1. **Wrap `alexzhang13/rlm` vs reimplement.** Wrapper is faster; reimplement is cleaner for custom history policy and domain objects. Default bias: reimplement a small loop so this repo's invariants are testable without tracking upstream.
 2. **Package name.** `rlm` is already the official library. Consider `recursivelm` / `rlm_lab` to avoid PyPI clash.
 3. **Finish protocol.** `FINAL_VAR(x)` vs `answer["ready"]`. Pick one; adapters can come later.
-4. **Default model ids.** Spec defaults are `gpt-5` / `gpt-5-mini` to match the paper. If the user's key does not have those ids, they override in `rlm.toml` — no code change. Confirm the exact ids at implementation time against current OpenAI docs.
+4. **Default model ids.** Spec defaults are `gpt-5` / `gpt-5-mini` to match the paper. If the user's key does not have those ids, they override in `rlm.toml` or `rlm.yaml` — no code change. Confirm the exact ids at implementation time against current OpenAI docs.
 5. **Git history as context.** v0 is working tree only; blame/log can be a Phase 5 tool.
 
 ---

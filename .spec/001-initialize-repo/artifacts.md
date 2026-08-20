@@ -30,8 +30,9 @@ Paper: Zhang, Kraska, Khattab, *Recursive Language Models* (arXiv:2512.24601).
 | D10 | REPL | **Docker only.** No in-process `exec`. No `--env local`. FakeEnv is tests-only. |
 | D11 | Key / network in container | Key unset. No public internet. `llm_query` RPCs to host. |
 | D12 | Shell | **No bash.** Codebase via `repo.tree/grep/read`. |
-| D13 | Depth | Default `max_depth = 1` (parent RLM, leaf LLM). |
+| D13 | Depth | Recurse as deep as the context needs. `max_depth = 16` is a safety cap, not the tree shape. |
 | D14 | Product surfaces | `rlm ask` (repo), `rlm research` (corpus), `rlm.completion` (string). |
+| D15 | Config file | **TOML or YAML** (`rlm.toml` / `rlm.yaml` / `rlm.yml`). Same keys. `--config` for an explicit path. Auth never in the file. |
 
 ---
 
@@ -83,8 +84,8 @@ Loop:  gpt-5 writes ```repl``` Python
 Return answer + usage + trajectory
 ```
 
-`llm_query` = one cheap OpenAI call (`gpt-5-mini`), no nested REPL.  
-`rlm_query` = child RLM (own container if `max_depth > 1`). At default depth 1 it falls back to `llm_query`.
+`llm_query` = one cheap OpenAI call (`gpt-5-mini`), no nested REPL. Call it as often as needed at any depth.  
+`rlm_query` = child RLM (own container + REPL). Use when the piece is still too big or still needs code. Repeat until slices fit. `max_depth` (default 16) is only a circuit breaker.
 
 ---
 
@@ -113,7 +114,7 @@ Return answer + usage + trajectory
 
 | Limit | Default |
 |---|---|
-| `max_depth` | 1 |
+| `max_depth` | 16 (safety; raise if a run actually hits it) |
 | `max_iterations` | 30 |
 | `max_observation_chars` | 2000–4000 (config 3000) |
 | `max_concurrent_subcalls` | 8 |
@@ -155,9 +156,27 @@ rlm ask ./pytorch -- "Where is autocast implemented?"
 rlm research ./papers -- "Where do these papers disagree?"
 ```
 
-Python: `RLM(...).completion` / `.ask_repo` / `.research`.
+Python: `RLM(...).completion` / `.ask_repo` / `.research` / `RLM.from_config("rlm.yaml")`.
 
-Config: `rlm.toml` for models and limits. Auth **only** via `OPENAI_API_KEY`. Trajectories under `.rlm/logs/`.
+```toml
+# rlm.toml  — or the same keys in rlm.yaml
+root_model = "gpt-5"
+leaf_model = "gpt-5-mini"
+max_depth = 16
+max_prompt_tokens = 99999
+max_instructions = 150
+```
+
+```yaml
+# rlm.yaml — equivalent
+root_model: gpt-5
+leaf_model: gpt-5-mini
+max_depth: 16
+max_prompt_tokens: 99999
+max_instructions: 150
+```
+
+Config: `rlm.toml` **or** `rlm.yaml` / `rlm.yml` (same properties). `--config path` to pick a file. Do not put both formats in cwd. Auth **only** via `OPENAI_API_KEY`. Trajectories under `.rlm/logs/`.
 
 Exit: `0` ok · `2` budget/timeout/100k abort · `3` REPL errors · `4` config/Docker/key.
 
@@ -167,12 +186,12 @@ Exit: `0` ok · `2` budget/timeout/100k abort · `3` REPL errors · `4` config/D
 
 | Phase | What | Done when |
 |---|---|---|
-| 0 | Package, CLI stub, Dockerfile, README | `pytest` + `rlm --help` |
+| 0 | Package, CLI stub, Dockerfile, README, toml+yaml config | `pytest` + `rlm --help` |
 | 1 | Docker REPL + OpenAI + history + prompt guard + `llm_query` | Context never in `hist`; 100k send refused; no Docker → no host exec |
 | 2 | Batched + `rlm_query` + budgets | Map 50 chunks; child gets own container |
 | 3 | `Repo` + `rlm ask` | Fixture repo Q&A with path:line cite |
 | 4 | `Corpus` + `rlm research` | Two docs + distractor, both cited |
-| 5 | Hardening | dry-run, toml, cost footer, image pin |
+| 5 | Hardening | dry-run, config discovery, cost footer, image pin |
 | 6 | Evals | After the product works |
 | 7 | Later | Train root, edits, web, UI — **not now** |
 
@@ -183,7 +202,7 @@ Exit: `0` ok · `2` budget/timeout/100k abort · `3` REPL errors · `4` config/D
 1. Wrap `alexzhang13/rlm` vs reimplement the loop? **Bias: reimplement** so invariants are ours.
 2. Package name (`rlm` is taken) — `recursivelm` / `rlm_lab`?
 3. Finish protocol: `FINAL_VAR(x)` vs `answer["ready"]`.
-4. Confirm `gpt-5` / `gpt-5-mini` ids against current OpenAI docs.
+4. Confirm `gpt-5` / `gpt-5-mini` ids against current OpenAI docs (override in toml or yaml).
 5. Git blame/log as `repo.*` later; not bash.
 
 ---
@@ -200,7 +219,8 @@ Tick while reading `spec.md`. Change the spec if you disagree; then update this 
 - [ ] REPL is Docker; I will run Docker on this machine.
 - [ ] No bash; `repo.*` / `corpus.*` is enough for v0.
 - [ ] v0 is Q&A over a repo and papers, not an editor.
-- [ ] Default depth 1 is enough to start.
+- [ ] Recursion can go as deep as the context needs; `max_depth` is only a safety cap.
+- [ ] Config may be TOML or YAML; the API key stays in the environment, not the file.
 - [ ] Open questions above can wait until implementation.
 
 **v1 of the product is successful when:** you point the CLI at a real repo and a folder of papers, ask a dense question, get a cited answer, and the trajectory shows the source never entered the parent window.
