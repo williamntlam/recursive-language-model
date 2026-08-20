@@ -20,8 +20,10 @@ recursive-language-model/
 │   ├── fixtures/small_repo/
 │   └── fixtures/tiny_corpus/
 ├── examples/
+├── codebases/                     # README tracked; clones gitignored
+├── corpora/                       # README tracked; document dumps gitignored
 ├── evals/                         # planned; not a v0 blocker
-└── .gitignore                     # .env, .rlm/, *.pdf.rlm.txt, caches
+└── .gitignore                     # .env, .rlm/, /codebases/*, /corpora/*, caches
 ```
 
 Python 3.12+, uv, Ruff (`line-length = 100`, `E,F,I,UP,W`), pytest.

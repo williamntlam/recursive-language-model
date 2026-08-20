@@ -15,3 +15,9 @@ htmlcov/
 .rlm/
 *.pdf.rlm.txt
 .DS_Store
+
+# Local clones / document dumps for trying the CLI. Do not commit them.
+/codebases/*
+!/codebases/README.md
+/corpora/*
+!/corpora/README.md

@@ -53,6 +53,13 @@ uv run rlm complete --context-file haystack.txt -- "Find the needle."
 uv run rlm ask ./repo --dry-run -- "preview the manifest and prompt"
 ```
 
+For a larger local clone, put it under `codebases/` (gitignored). See [`codebases/README.md`](../codebases/README.md).
+
+```bash
+git clone --depth 1 https://github.com/pytorch/pytorch.git codebases/pytorch
+uv run rlm ask codebases/pytorch -- "Where is autocast implemented?"
+```
+
 Stdout is the answer. Stderr gets a one-line usage footer (`tokens`, estimated `cost`, iterations, subcalls, trajectory path, `report.html`). Open that HTML file in a browser to see the recursion timeline. Rebuild it later with `uv run rlm report .rlm/logs`.
 
 ## Python
