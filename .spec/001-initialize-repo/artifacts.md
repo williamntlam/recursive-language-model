@@ -211,16 +211,16 @@ Exit: `0` ok · `2` budget/timeout/100k abort · `3` REPL errors · `4` config/D
 
 Tick while reading `spec.md`. Change the spec if you disagree; then update this file.
 
-- [ ] I want an RLM (REPL + recursive slices), not ReAct/RAG/compaction.
-- [ ] Parent context stays small; tool dumps must not land in `hist`.
-- [ ] Every LM call, parent and child, stays **under 100k** tokens.
-- [ ] Prompts stay **≤ 150** instructions; I will not keep adding rules.
-- [ ] OpenAI + `OPENAI_API_KEY` only for v0.
-- [ ] REPL is Docker; I will run Docker on this machine.
-- [ ] No bash; `repo.*` / `corpus.*` is enough for v0.
-- [ ] v0 is Q&A over a repo and papers, not an editor.
-- [ ] Recursion can go as deep as the context needs; `max_depth` is only a safety cap.
-- [ ] Config may be TOML or YAML; the API key stays in the environment, not the file.
-- [ ] Open questions above can wait until implementation.
+- [X] I want an RLM (REPL + recursive slices), not ReAct/RAG/compaction.
+- [X] Parent context stays small; tool dumps must not land in `hist`.
+- [X] Every LM call, parent and child, stays **under 100k** tokens.
+- [X] Prompts stay **≤ 150** instructions; I will not keep adding rules.
+- [X] OpenAI + `OPENAI_API_KEY` only for v0.
+- [X] REPL is Docker; I will run Docker on this machine.
+- [X] No bash; `repo.*` / `corpus.*` is enough for v0.
+- [X] v0 is Q&A over a repo and papers, not an editor.
+- [X] Recursion can go as deep as the context needs; `max_depth` is only a safety cap.
+- [X] Config may be TOML or YAML; the API key stays in the environment, not the file.
+- [X] Open questions above can wait until implementation.
 
 **v1 of the product is successful when:** you point the CLI at a real repo and a folder of papers, ask a dense question, get a cited answer, and the trajectory shows the source never entered the parent window.

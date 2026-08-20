@@ -1,0 +1,14 @@
+root_model = "gpt-5"
+leaf_model = "gpt-5-mini"
+environment = "docker"
+max_depth = 16
+max_iterations = 30
+max_observation_chars = 3000
+max_prompt_tokens = 99999
+max_instructions = 150
+max_concurrent_subcalls = 8
+max_consecutive_errors = 5
+# max_budget_usd = 2.00
+# max_timeout_s = 120
+log_dir = ".rlm/logs"
+verbose = false
