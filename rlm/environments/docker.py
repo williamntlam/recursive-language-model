@@ -11,11 +11,21 @@ import time
 from pathlib import Path
 
 from rlm.core.types import Observation
-from rlm.errors import StartupError
+from rlm.errors import BudgetExhaustedError, StartupError
 from rlm.ipc import read_msg, write_msg
-from rlm.repl_ns import SubcallHandler
+from rlm.repl_ns import DEFAULT_CELL_CPU_TIMEOUT_S, SubcallHandler
 
-IMAGE_TAG = "rlm-repl:0.1.4"
+IMAGE_TAG = "rlm-repl:0.1.7"
+
+# Peer closed the LM socket (cell timed out, container died, or host execute aborted).
+_PEER_GONE = (BrokenPipeError, ConnectionError, ConnectionResetError)
+
+
+def host_exec_timeout(exec_wait_s: float | None) -> float | None:
+    """Seconds the host waits for one cell result. None = block (no session cap)."""
+    if exec_wait_s is None or exec_wait_s <= 0:
+        return None
+    return float(exec_wait_s) + 5.0
 
 
 def docker_client():
@@ -87,9 +97,22 @@ class CallbackServer(threading.Thread):
                 target=self._serve_request, args=(conn,), daemon=True
             ).start()
 
+    def _reply(self, conn: socket.socket, obj: dict) -> None:
+        try:
+            write_msg(conn, obj)
+        except _PEER_GONE:
+            return
+        except OSError as e:
+            if getattr(e, "errno", None) in {32, 104, 107}:
+                return
+            raise
+
     def _serve_request(self, conn: socket.socket) -> None:
         try:
-            req = read_msg(conn)
+            try:
+                req = read_msg(conn)
+            except _PEER_GONE:
+                return
             typ = req.get("type")
             try:
                 if typ == "llm_query":
@@ -106,9 +129,10 @@ class CallbackServer(threading.Thread):
                     )
                 else:
                     raise ValueError(f"unknown callback type {typ!r}")
-                write_msg(conn, {"type": "ok", "value": value})
             except Exception as e:
-                write_msg(conn, {"type": "error", "message": str(e)})
+                self._reply(conn, {"type": "error", "message": str(e)})
+                return
+            self._reply(conn, {"type": "ok", "value": value})
         finally:
             try:
                 conn.close()
@@ -163,7 +187,8 @@ class DockerEnv:
         mode: str,
         query: str,
         max_stdout_chars: int = 4000,
-        cell_timeout_s: float | None = 60.0,
+        cell_timeout_s: float | None = DEFAULT_CELL_CPU_TIMEOUT_S,
+        exec_wait_s: float | None = None,
         mem_limit: str = "2g",
     ) -> None:
         self.handler = handler
@@ -172,6 +197,7 @@ class DockerEnv:
         self.query = query
         self.max_stdout_chars = max_stdout_chars
         self.cell_timeout_s = cell_timeout_s
+        self.exec_wait_s = exec_wait_s
         self._client = docker_client()
         ensure_image(self._client)
         self.ipc_dir = Path(tempfile.mkdtemp(prefix="rlm-ipc-"))
@@ -220,7 +246,9 @@ class DockerEnv:
                     "query": query,
                     "mode": mode,
                     "max_stdout_chars": max_stdout_chars,
-                    "cell_timeout_s": cell_timeout_s or 60.0,
+                    "cell_timeout_s": cell_timeout_s
+                    if cell_timeout_s is not None
+                    else DEFAULT_CELL_CPU_TIMEOUT_S,
                 },
             )
             ack = read_msg(self._conn)
@@ -232,10 +260,22 @@ class DockerEnv:
 
     def execute(self, code: str) -> Observation:
         assert self._conn is not None
-        timeout = (self.cell_timeout_s or 60.0) + 5.0
-        self._conn.settimeout(timeout)
+        self._conn.settimeout(host_exec_timeout(self.exec_wait_s))
         write_msg(self._conn, {"type": "exec", "code": code})
-        msg = read_msg(self._conn)
+        try:
+            msg = read_msg(self._conn)
+        except TimeoutError as e:
+            wait = self.exec_wait_s
+            raise BudgetExhaustedError(
+                "REPL timed out waiting for a cell (including nested "
+                "llm_query / rlm_query). "
+                + (
+                    f"The wait was {wait}s. Pass a larger --timeout, or omit "
+                    "--timeout for no wall-clock cap."
+                    if wait
+                    else "The socket wait was unlimited; the connection stalled."
+                )
+            ) from e
         return Observation(
             stdout=msg.get("stdout") or "",
             stderr=msg.get("stderr") or "",

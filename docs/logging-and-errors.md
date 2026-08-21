@@ -10,6 +10,7 @@ Each successful or failed run that reaches `TrajectoryLogger` writes:
   events.jsonl       # one record per iteration / subcall / error
   answer.txt         # written on successful finish (depth 0)
   usage.json         # tokens, cost, iterations, subcalls
+  error.txt          # REPL stderr, parse errors, abort; omitted if the run was clean
   report.html        # static timeline; written after the run (also on abort)
 ```
 
@@ -41,12 +42,12 @@ The raw query string is **not** stored in `meta.json` (only its length and sha25
 | `kind` | When |
 |---|---|
 | `root_lm` | Parent (or child RLM root) completion: model, prompt_tokens, instruction_count, completion_tokens, latency_s, cost_usd, iteration, depth |
-| `repl` | Cell executed: code[:4000], stdout[:4000], error, tokens, instruction_count |
+| `repl` | Cell executed: code[:4000], stdout[:4000], stderr[:4000], error, tokens, instruction_count |
 | `parse_error` | No `repl` fence |
 | `llm_query` | Leaf call |
 | `rlm_query` | Child finished: `child_depth`, `answer_n_chars` |
 
-Child RLMs **share** the parent's logger directory (events interleave; `depth` distinguishes them). `answer.txt` / `usage.json` are written only when **depth 0** finishes successfully. An abort after the logger exists may leave `events.jsonl` without those two files.
+Child RLMs **share** the parent's logger directory (events interleave; `depth` distinguishes them). `answer.txt` / `usage.json` are written only when **depth 0** finishes successfully. An abort after the logger exists may leave `events.jsonl` without those two files. `error.txt` is appended as stderr arrives, so a killed run still has the REPL errors.
 
 ### Redaction
 

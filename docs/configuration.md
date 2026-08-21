@@ -62,7 +62,8 @@ Missing key → `StartupError` when constructing `OpenAIClient` (CLI exit `4`). 
 | `max_concurrent_subcalls` | `8` | Thread pool size for batched maps (`>= 1`) |
 | `max_consecutive_errors` | `5` | Parse/REPL errors before abort (`>= 1`) |
 | `max_budget_usd` | unset | Optional USD cap (`>= 0`) |
-| `max_timeout_s` | unset | Optional wall-clock seconds (`> 0`) |
+| `max_timeout_s` | unset | Optional wall-clock seconds for the whole run (`> 0`) |
+| `cell_timeout_s` | `300` | Seconds before hung local Python in a cell is killed (`> 0`). Paused during `llm_query` / `rlm_query`. |
 | `log_dir` | `".rlm/logs"` | Trajectory parent directory |
 | `verbose` | `false` | Print iterations to stderr |
 | `extra_instructions` | unset | List of strings; each counts as one instruction |
@@ -93,6 +94,7 @@ max_concurrent_subcalls = 8
 max_consecutive_errors = 5
 # max_budget_usd = 2.00
 # max_timeout_s = 120
+cell_timeout_s = 300
 log_dir = ".rlm/logs"
 verbose = false
 ```
@@ -112,6 +114,7 @@ max_concurrent_subcalls: 8
 max_consecutive_errors: 5
 # max_budget_usd: 2.00
 # max_timeout_s: 120
+cell_timeout_s: 300
 log_dir: .rlm/logs
 verbose: false
 ```

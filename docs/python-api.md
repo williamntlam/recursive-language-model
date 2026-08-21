@@ -26,6 +26,7 @@ RLM(
     max_observation_chars: int | None = None,
     max_budget_usd: float | None = None,
     max_timeout_s: float | None = None,
+    cell_timeout_s: float | None = None,
     max_concurrent_subcalls: int | None = None,
     max_consecutive_errors: int | None = None,
     log_dir: str | None = None,

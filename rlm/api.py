@@ -28,8 +28,6 @@ def _fake_env_factory(*, bindings, handler, mode, workspace, config):  # noqa: A
 def _docker_env_factory(*, bindings, handler, mode, workspace, config):
     from rlm.environments.docker import DockerEnv
 
-    remaining = config.max_timeout_s
-    cell_timeout = 60.0 if remaining is None else remaining
     if workspace is None:
         raise StartupError("Docker REPL requires a workspace path.")
     return DockerEnv(
@@ -38,7 +36,8 @@ def _docker_env_factory(*, bindings, handler, mode, workspace, config):
         mode=mode,
         query=str(bindings.get("query") or ""),
         max_stdout_chars=config.max_observation_chars,
-        cell_timeout_s=cell_timeout,
+        cell_timeout_s=config.cell_timeout_s,
+        exec_wait_s=config.max_timeout_s,
     )
 
 
@@ -57,6 +56,7 @@ class RLM:
         max_observation_chars: int | None = None,
         max_budget_usd: float | None = None,
         max_timeout_s: float | None = None,
+        cell_timeout_s: float | None = None,
         max_concurrent_subcalls: int | None = None,
         max_consecutive_errors: int | None = None,
         log_dir: str | None = None,
@@ -78,6 +78,7 @@ class RLM:
             max_observation_chars=max_observation_chars,
             max_budget_usd=max_budget_usd,
             max_timeout_s=max_timeout_s,
+            cell_timeout_s=cell_timeout_s,
             max_concurrent_subcalls=max_concurrent_subcalls,
             max_consecutive_errors=max_consecutive_errors,
             log_dir=log_dir,

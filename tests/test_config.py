@@ -117,3 +117,15 @@ def test_raising_ceilings_in_file_is_error(tmp_path: Path):
 def test_environment_local_rejected():
     with pytest.raises(ConfigError, match="docker"):
         Config(environment="local")
+
+
+def test_cell_timeout_from_file(tmp_path: Path):
+    path = tmp_path / "rlm.toml"
+    path.write_text("cell_timeout_s = 90\n", encoding="utf-8")
+    cfg = load_config(config_path=path)
+    assert cfg.cell_timeout_s == pytest.approx(90.0)
+
+
+def test_cell_timeout_must_be_positive():
+    with pytest.raises(ConfigError, match="cell_timeout_s"):
+        Config(cell_timeout_s=0)

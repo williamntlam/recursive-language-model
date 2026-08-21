@@ -13,7 +13,14 @@ from pathlib import Path
 from rlm.domains.corpus import Corpus, ingest_path
 from rlm.domains.repo import Repo
 from rlm.ipc import read_msg, write_msg
-from rlm.repl_ns import SubcallHandler, create_namespace, run_cell, snapshot_reserved
+from rlm.repl_ns import (
+    DEFAULT_CELL_CPU_TIMEOUT_S,
+    SubcallHandler,
+    create_namespace,
+    pause_alarm,
+    run_cell,
+    snapshot_reserved,
+)
 
 REPL_SOCK = "/ipc/repl.sock"
 LM_SOCK = "/ipc/lm.sock"
@@ -25,8 +32,9 @@ class RpcHandler(SubcallHandler):
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(LM_SOCK)
         try:
-            write_msg(sock, payload)
-            resp = read_msg(sock)
+            with pause_alarm():
+                write_msg(sock, payload)
+                resp = read_msg(sock)
         finally:
             sock.close()
         if resp.get("type") == "error":
@@ -86,14 +94,19 @@ def serve() -> None:
     ns = None
     reserved = None
     max_stdout = 4000
-    cell_timeout = 60.0
+    cell_timeout = DEFAULT_CELL_CPU_TIMEOUT_S
     try:
         while True:
             msg = read_msg(conn)
             typ = msg.get("type")
             if typ == "init":
                 max_stdout = int(msg.get("max_stdout_chars") or 4000)
-                cell_timeout = float(msg.get("cell_timeout_s") or 60.0)
+                raw_timeout = msg.get("cell_timeout_s")
+                cell_timeout = (
+                    float(raw_timeout)
+                    if raw_timeout is not None
+                    else DEFAULT_CELL_CPU_TIMEOUT_S
+                )
                 mode = msg.get("mode") or "string"
                 query = msg.get("query") or ""
                 bindings = bind_workspace(mode, query)

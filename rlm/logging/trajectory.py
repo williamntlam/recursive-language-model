@@ -1,4 +1,4 @@
-"""Inspectable trajectories: meta.json, events.jsonl, answer.txt, usage.json."""
+"""Inspectable trajectories: meta.json, events.jsonl, answer.txt, usage.json, error.txt."""
 
 from __future__ import annotations
 
@@ -37,6 +37,7 @@ class TrajectoryLogger:
         self.dir = Path(log_dir) / run_id
         self.dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.dir / "events.jsonl"
+        self.error_path = self.dir / "error.txt"
         meta = {
             "id": run_id,
             "query_sha256": extra_meta.get("query_sha256"),
@@ -52,6 +53,62 @@ class TrajectoryLogger:
         line = json.dumps(_safe(record), ensure_ascii=False, default=str)
         with self.events_path.open("a", encoding="utf-8") as f:
             f.write(line + "\n")
+        try:
+            self._maybe_record_event_error(record)
+        except OSError:
+            pass
+
+    def record_stderr(
+        self,
+        text: str,
+        *,
+        iteration: int | None = None,
+        depth: int | None = None,
+        kind: str = "repl",
+        code: str | None = None,
+    ) -> None:
+        """Append stderr (or an abort/parse error) to error.txt. No-op if empty."""
+        body = redact(text or "").rstrip()
+        if not body:
+            return
+        bits = [f"=== {kind}"]
+        if iteration is not None:
+            bits.append(f"iteration={iteration}")
+        if depth is not None:
+            bits.append(f"depth={depth}")
+        chunk = " ".join(bits) + " ===\n"
+        if code:
+            chunk += "code:\n" + redact(str(code)).rstrip() + "\n\n"
+        chunk += body + "\n\n"
+        with self.error_path.open("a", encoding="utf-8") as f:
+            f.write(chunk)
+
+    def _maybe_record_event_error(self, record: dict[str, Any]) -> None:
+        kind = str(record.get("kind") or "")
+        iteration = record.get("iteration")
+        depth = record.get("depth")
+        if kind == "repl":
+            text = record.get("stderr") or record.get("error") or ""
+            if text:
+                self.record_stderr(
+                    str(text),
+                    iteration=iteration if isinstance(iteration, int) else None,
+                    depth=depth if isinstance(depth, int) else None,
+                    kind="repl",
+                    code=None if record.get("code") is None else str(record.get("code")),
+                )
+            return
+        if kind == "parse_error":
+            preview = str(record.get("text_preview") or "").rstrip()
+            msg = "parse_error: no executable code fence"
+            if preview:
+                msg += "\n" + preview
+            self.record_stderr(
+                msg,
+                iteration=iteration if isinstance(iteration, int) else None,
+                depth=depth if isinstance(depth, int) else None,
+                kind="parse_error",
+            )
 
     def finish(self, answer: str, usage: Usage, extra: dict[str, Any] | None = None) -> None:
         (self.dir / "answer.txt").write_text(redact(answer), encoding="utf-8")

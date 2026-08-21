@@ -136,6 +136,7 @@ class Runtime:
         identical = 0
         consec_err = 0
         answer: str | None = None
+        abort: BaseException | None = None
         try:
             for i in range(self.config.max_iterations):
                 self.budget.check()
@@ -215,6 +216,7 @@ class Runtime:
                     depth=self.depth,
                     code=code[:4000],
                     stdout=formatted[:4000],
+                    stderr=(obs.stderr or "")[:4000],
                     error=obs.error,
                     prompt_tokens=n_tok,
                     instruction_count=n_inst,
@@ -236,12 +238,24 @@ class Runtime:
                 raise BudgetExhaustedError(
                     f"max_iterations ({self.config.max_iterations}) exhausted without FINAL_VAR."
                 )
+        except BaseException as e:
+            abort = e
+            raise
         finally:
             env.close()
             if cleanup_workspace and workspace is not None:
                 import shutil
 
                 shutil.rmtree(workspace, ignore_errors=True)
+            if abort is not None:
+                try:
+                    self.logger.record_stderr(
+                        f"{type(abort).__name__}: {abort}",
+                        kind="abort",
+                        depth=self.depth,
+                    )
+                except OSError:
+                    pass
             if self.depth == 0:
                 try:
                     self.logger.write_html()

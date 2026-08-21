@@ -31,7 +31,7 @@ The host process owns the RLM loop, OpenAI calls, prompt guard, and trajectory l
 ## Host vs container
 
 ```
-Host                                              Container (rlm-repl:0.1.4)
+Host                                              Container (rlm-repl:0.1.7)
 ────                                              ─────────────────────────
 RLM loop                                          persistent Python interpreter
 OpenAI client + OPENAI_API_KEY                    context / repo / corpus variables
@@ -98,7 +98,7 @@ CLI (rlm.cli)  →  RLM (rlm.api)  →  Runtime (rlm.core.runtime)
 
 | Knob | Value |
 |---|---|
-| Image | `rlm-repl:0.1.4` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
+| Image | `rlm-repl:0.1.7` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
 | Network | `network_mode="none"` |
 | `OPENAI_API_KEY` in container | unset |
 | Root filesystem | read-only; tmpfs on `/tmp` and `/repl` (64 MiB each) |
@@ -108,7 +108,7 @@ CLI (rlm.cli)  →  RLM (rlm.api)  →  Runtime (rlm.core.runtime)
 | Memory | 2 GiB |
 | CPUs | 1 |
 | PIDs | 256 |
-| Cell timeout | remaining `max_timeout_s`, else 60s (`SIGALRM` inside the container) |
+| Cell timeout | `cell_timeout_s` (default 300s) `SIGALRM` for local Python; paused during host RPCs. Host wait is remaining `max_timeout_s`, or unlimited if unset |
 
 `FakeEnv` implements the same `execute(code) -> Observation` protocol for unit tests. It is **not** selectable from the CLI. There is no `--env local`.
 

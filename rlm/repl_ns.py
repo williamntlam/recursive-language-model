@@ -8,12 +8,31 @@ import io
 import signal
 import sys
 import traceback
-from collections.abc import Callable
-from contextlib import redirect_stderr, redirect_stdout
+from collections.abc import Callable, Iterator
+from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any
 
 from rlm.core.history import DISPLAY_MAX_CHARS, compact_repr, sha256_text
 from rlm.core.types import Observation
+
+# Fallback if the init payload omits cell_timeout_s (this file is copied into
+# the image without config.py). Host default is Config.cell_timeout_s.
+DEFAULT_CELL_CPU_TIMEOUT_S = 300.0
+
+
+@contextmanager
+def pause_alarm() -> Iterator[None]:
+    """Stop SIGALRM for the duration of a host RPC so children can outlive the cell CPU cap."""
+    if not hasattr(signal, "getitimer"):
+        yield
+        return
+    remaining = signal.getitimer(signal.ITIMER_REAL)[0]
+    signal.setitimer(signal.ITIMER_REAL, 0)
+    try:
+        yield
+    finally:
+        if remaining > 0:
+            signal.setitimer(signal.ITIMER_REAL, remaining)
 
 RESERVED_NAMES = (
     "context",
@@ -53,6 +72,7 @@ ALLOWED_IMPORTS = frozenset(
         "dataclasses",
         "enum",
         "abc",
+        "ast",
         "numbers",
         "decimal",
         "fractions",
@@ -109,6 +129,16 @@ def _size_hint(value: Any) -> str:
     return type(value).__name__
 
 
+def _require_prompt_str(who: str, prompt: Any) -> str:
+    if isinstance(prompt, str):
+        return prompt
+    kind = type(prompt).__name__
+    return (
+        f"Error: {who} requires a str, got {kind}. "
+        "Build the question with an f-string; do not pass a function or lambda."
+    )
+
+
 def create_namespace(
     bindings: dict[str, Any],
     handler: SubcallHandler,
@@ -124,7 +154,7 @@ def create_namespace(
         if root not in ALLOWED_IMPORTS:
             raise ImportError(
                 f"import of {name!r} is not allowed in the RLM REPL. "
-                "Use re, json, pathlib, collections, textwrap, and bound helpers."
+                "Use re, json, ast, pathlib, collections, textwrap, and bound helpers."
             )
         return _builtins.__import__(name, globals, locals, fromlist, level)
 
@@ -159,16 +189,28 @@ def create_namespace(
     ns["__name__"] = "rlm_repl"
 
     def llm_query(prompt: str, model: str | None = None) -> str:
-        return handler.llm_query(str(prompt), model=model)
+        text = _require_prompt_str("llm_query", prompt)
+        if text.startswith("Error:"):
+            return text
+        return handler.llm_query(text, model=model)
 
     def llm_query_batched(prompts: list[str], model: str | None = None) -> list[str]:
-        return handler.llm_query_batched([str(p) for p in prompts], model=model)
+        texts = [_require_prompt_str("llm_query_batched", p) for p in prompts]
+        if any(t.startswith("Error:") for t in texts):
+            return texts
+        return handler.llm_query_batched(texts, model=model)
 
     def rlm_query(prompt: str, model: str | None = None) -> str:
-        return handler.rlm_query(str(prompt), model=model)
+        text = _require_prompt_str("rlm_query", prompt)
+        if text.startswith("Error:"):
+            return text
+        return handler.rlm_query(text, model=model)
 
     def rlm_query_batched(prompts: list[str], model: str | None = None) -> list[str]:
-        return handler.rlm_query_batched([str(p) for p in prompts], model=model)
+        texts = [_require_prompt_str("rlm_query_batched", p) for p in prompts]
+        if any(t.startswith("Error:") for t in texts):
+            return texts
+        return handler.rlm_query_batched(texts, model=model)
 
     def SHOW_VARS() -> str:
         lines: list[str] = []
@@ -190,8 +232,14 @@ def create_namespace(
         return ns["_rlm_final"]
 
     def FINAL_VAR(name: str) -> str:
+        if not isinstance(name, str):
+            kind = type(name).__name__
+            raise TypeError(
+                f'FINAL_VAR requires a variable name as a str, got {kind}. '
+                'Assign the answer, then FINAL_VAR("that_name").'
+            )
         if name not in ns:
-            raise NameError(f"{name!r} is not defined")
+            raise NameError(_missing_final_var(name, ns))
         return FINAL(ns[name])
 
     ns["llm_query"] = llm_query
@@ -234,30 +282,91 @@ def _is_final_call(node: ast.Expr) -> bool:
     )
 
 
-def _split_last_expression(code: str) -> tuple[ast.Module | None, ast.Expression | None]:
+def _user_var_names(ns: dict[str, Any]) -> list[str]:
+    skip = {"__builtins__", "__name__"}
+    names: list[str] = []
+    for key in sorted(ns):
+        if key.startswith("_") or key in skip or key in RESERVED_NAMES:
+            continue
+        names.append(key)
+    return names
+
+
+def _missing_final_var(name: str, ns: dict[str, Any]) -> str:
+    bound = _user_var_names(ns)
+    if bound:
+        shown = bound[:40]
+        extra = f" … ({len(bound) - 40} more)" if len(bound) > 40 else ""
+        listing = ", ".join(shown) + extra
+    else:
+        listing = "(none yet)"
+    return (
+        f"{name!r} is not defined. Bound user names: {listing}. "
+        'Assign the answer, then FINAL_VAR("that_name"). '
+        "Do not invent names. Peek, then spawn repo.explore / rlm_query_batched. "
+        "SHOW_VARS() lists what exists."
+    )
+
+
+def _quote_final_var_names(tree: ast.AST) -> None:
+    """Treat FINAL_VAR(foo) as FINAL_VAR("foo") so a bare name is a lookup, not a value."""
+    for node in ast.walk(tree):
+        if not isinstance(node, ast.Call):
+            continue
+        if not (isinstance(node.func, ast.Name) and node.func.id == "FINAL_VAR"):
+            continue
+        if len(node.args) != 1 or node.keywords:
+            continue
+        arg = node.args[0]
+        if isinstance(arg, ast.Name):
+            node.args[0] = ast.Constant(arg.id)
+
+
+def _split_last_expression_tree(
+    tree: ast.Module,
+) -> tuple[ast.Module | None, ast.Expression | None]:
     """If the last statement is a non-FINAL expression, return (prefix module, expr)."""
-    try:
-        tree = ast.parse(code, filename="<repl>")
-    except SyntaxError:
-        return None, None
     if not tree.body or not isinstance(tree.body[-1], ast.Expr):
         return None, None
     last = tree.body[-1]
     assert isinstance(last, ast.Expr)
     if _is_final_call(last):
         return None, None
-    tree.body = tree.body[:-1]
-    ast.fix_missing_locations(tree)
+    prefix = ast.Module(body=list(tree.body[:-1]), type_ignores=list(tree.type_ignores))
+    ast.fix_missing_locations(prefix)
     expr = ast.Expression(last.value)
     ast.fix_missing_locations(expr)
-    return tree, expr
+    return prefix, expr
+
+
+def _format_cell_error(exc: BaseException) -> str:
+    """Exception text plus the <repl> line; omit REPL internals."""
+    name = type(exc).__name__
+    msg = str(exc).strip() or repr(exc)
+    lines = [f"{name}: {msg}"]
+    for frame in traceback.extract_tb(exc.__traceback__):
+        if frame.filename != "<repl>":
+            continue
+        snippet = (frame.line or "").strip()
+        if snippet:
+            lines.append(f"  <repl> line {frame.lineno}: {snippet}")
+        else:
+            lines.append(f"  <repl> line {frame.lineno}")
+    return "\n".join(lines)
 
 
 def _exec_cell(code: str, ns: dict[str, Any], buf_out: io.StringIO, max_send_chars: int) -> None:
-    prefix, expr = _split_last_expression(code)
-    if prefix is None or expr is None:
+    try:
+        tree = ast.parse(code, filename="<repl>")
+    except SyntaxError:
         compiled = compile(code, "<repl>", "exec")
         exec(compiled, ns, ns)  # noqa: S102 — product REPL; FakeEnv is tests-only
+        return
+    _quote_final_var_names(tree)
+    ast.fix_missing_locations(tree)
+    prefix, expr = _split_last_expression_tree(tree)
+    if prefix is None or expr is None:
+        exec(compile(tree, "<repl>", "exec"), ns, ns)  # noqa: S102
         return
     if prefix.body:
         exec(compile(prefix, "<repl>", "exec"), ns, ns)  # noqa: S102
@@ -303,9 +412,11 @@ def run_cell(
                     signal.setitimer(signal.ITIMER_REAL, 0)
                     if old_handler is not None:
                         signal.signal(signal.SIGALRM, old_handler)
-    except Exception:
-        error = traceback.format_exc()
+    except Exception as exc:
+        error = _format_cell_error(exc)
         buf_err.write(error)
+        if not error.endswith("\n"):
+            buf_err.write("\n")
     finally:
         restore_reserved(ns, reserved_snap)
 

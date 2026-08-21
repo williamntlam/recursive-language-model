@@ -143,3 +143,32 @@ def test_completion_writes_report(tmp_path):
     html = (out.trajectory / "report.html").read_text(encoding="utf-8")
     assert "hi" in html
     assert "REPL cell" in html
+    assert not (out.trajectory / "error.txt").exists()
+
+
+def test_repl_stderr_writes_error_txt(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [repl("print('ok')\n1/0\n"), repl("FINAL('recovered')\n")],
+        max_consecutive_errors=5,
+    )
+    out = rlm.completion("q", "context-" + "n" * 300)
+    assert out.response == "recovered"
+    err_path = out.trajectory / "error.txt"
+    assert err_path.is_file()
+    text = err_path.read_text(encoding="utf-8")
+    assert "ZeroDivisionError" in text
+    assert "1/0" in text
+    assert "=== repl" in text
+
+
+def test_parse_error_writes_error_txt(tmp_path):
+    logger = TrajectoryLogger(tmp_path / "logs", query="q", extra_meta={})
+    logger.event(kind="parse_error", iteration=0, depth=0, text_preview="I refuse.")
+    path = logger.write_html()
+    html = path.read_text(encoding="utf-8")
+    assert "incomplete" in html
+    assert "parse error" in html
+    err = (logger.dir / "error.txt").read_text(encoding="utf-8")
+    assert "parse_error" in err
+    assert "I refuse." in err

@@ -14,6 +14,7 @@ from rlm.errors import ConfigError
 HARD_MAX_PROMPT_TOKENS = 99_999
 HARD_MAX_INSTRUCTIONS = 150
 HARD_PROMPT_TOKEN_EXCLUSIVE = 100_000
+DEFAULT_CELL_TIMEOUT_S = 300.0
 
 ALLOWED_ENVIRONMENTS = frozenset({"docker"})
 FORBIDDEN_AUTH_KEYS = frozenset(
@@ -52,6 +53,7 @@ class Config:
     max_consecutive_errors: int = 5
     max_budget_usd: float | None = None
     max_timeout_s: float | None = None
+    cell_timeout_s: float = DEFAULT_CELL_TIMEOUT_S
     log_dir: str = ".rlm/logs"
     verbose: bool = False
     extra_instructions: list[str] | None = None
@@ -90,6 +92,8 @@ class Config:
             raise ConfigError("max_budget_usd must be >= 0")
         if self.max_timeout_s is not None and self.max_timeout_s <= 0:
             raise ConfigError("max_timeout_s must be > 0")
+        if self.cell_timeout_s <= 0:
+            raise ConfigError("cell_timeout_s must be > 0")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -148,6 +152,7 @@ _COERCE = {
     "max_consecutive_errors": _as_int,
     "max_budget_usd": _as_opt_float,
     "max_timeout_s": _as_opt_float,
+    "cell_timeout_s": _as_float,
     "log_dir": _as_str,
     "verbose": _as_bool,
     "extra_instructions": _as_opt_str_list,

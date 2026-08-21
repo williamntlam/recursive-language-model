@@ -30,7 +30,7 @@ It writes Python. That Python peeks and slices the bound data, stores intermedia
 The load-bearing difference versus “an agent with code + sub-agents”:
 
 1. **The prompt lives in the environment, not in `hist`.** The root is not given `P`.
-2. **The answer can live in a variable.** `FINAL_VAR(name)` returns a string stored in the REPL.
+2. **The answer can live in a variable.** `FINAL_VAR("name")` returns a string stored in the REPL.
 3. **Recursion is symbolic.** Sub-calls happen *inside Python* (loops, maps, batches), not as a handful of English tool traces.
 
 A scaffold that (a) puts `P` in chat, (b) verbalizes a few `sub_llm` calls, and (c) compact-summarizes when full is **not** an RLM.

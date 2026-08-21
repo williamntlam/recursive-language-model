@@ -38,7 +38,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | Module | Role |
 |---|---|
 | `base.py` | `Environment` protocol: `execute`, `close` |
-| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.4"` |
+| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.7"` |
 | `fake.py` | In-memory REPL for tests |
 
 ## `rlm.domains`
@@ -60,7 +60,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 
 | Module | Role |
 |---|---|
-| `trajectory.py` | `TrajectoryLogger`, `redact` |
+| `trajectory.py` | `TrajectoryLogger`, `redact`; writes `error.txt` on stderr / parse / abort |
 | `html.py` | `write_report`, `resolve_run_dir` — static `report.html` |
 
 ## `docker/`
@@ -113,8 +113,9 @@ class LMResponse:
 | `HARD_MAX_PROMPT_TOKENS` | `config.py` | `99_999` |
 | `HARD_MAX_INSTRUCTIONS` | `config.py` | `150` |
 | `HARD_PROMPT_TOKEN_EXCLUSIVE` | `config.py` | `100_000` |
+| `DEFAULT_CELL_TIMEOUT_S` | `config.py` | `300.0` |
 | `ALLOWED_ENVIRONMENTS` | `config.py` | `{"docker"}` |
-| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.4"` |
+| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.7"` |
 | `RESERVED_NAMES` | `repl_ns.py` | tuple of protected identifiers |
 | `ALLOWED_IMPORTS` | `repl_ns.py` | stdlib allowlist |
 | `CHILD_QUERY` | `core/runtime.py` | fixed query string for nested RLMs |

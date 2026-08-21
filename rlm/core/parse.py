@@ -28,6 +28,10 @@ _SKIP_LANGS = frozenset(
     }
 )
 _BARE_HEADERS = frozenset({"repl", "python", "py"})
+_FENCE_LEFTOVER = re.compile(
+    r"^[ \t]*(?:```)?[ \t]*(?:repl|python|py)[ \t]*:?[ \t]*(?:```)?[ \t]*$",
+    re.IGNORECASE,
+)
 
 
 def extract_repl_code(text: str) -> str | None:
@@ -35,8 +39,17 @@ def extract_repl_code(text: str) -> str | None:
     body = (text or "").replace("\r\n", "\n")
     fenced = _fenced_cell(body)
     if fenced is not None:
-        return fenced
-    return _bare_repl_cell(body)
+        return _strip_fence_leftovers(fenced)
+    bare = _bare_repl_cell(body)
+    if bare is None:
+        return None
+    return _strip_fence_leftovers(bare)
+
+
+def _strip_fence_leftovers(code: str) -> str:
+    """Drop stray `repl` / `python` headings the model leaves inside a cell."""
+    kept = [line for line in code.split("\n") if not _FENCE_LEFTOVER.match(line)]
+    return "\n".join(kept).strip("\n")
 
 
 def _fenced_cell(body: str) -> str | None:

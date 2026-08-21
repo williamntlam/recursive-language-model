@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import time
 
 import pytest
 
@@ -64,6 +65,46 @@ def test_callback_server_does_not_shadow_thread_handle():
     assert "_serve_request" in names
 
 
+def test_host_exec_timeout_blocks_when_session_is_unlimited():
+    from rlm.environments.docker import host_exec_timeout
+
+    assert host_exec_timeout(None) is None
+    assert host_exec_timeout(0) is None
+    assert host_exec_timeout(60.0) == 65.0
+
+
+def test_serve_request_swallows_broken_pipe(tmp_path):
+    import socket
+
+    from rlm.environments.docker import CallbackServer
+    from rlm.ipc import write_msg
+    from rlm.repl_ns import SubcallHandler
+
+    class H(SubcallHandler):
+        def llm_query(self, prompt, model=None):
+            return "leaf"
+
+        def llm_query_batched(self, prompts, model=None):
+            return ["leaf"] * len(prompts)
+
+        def rlm_query(self, prompt, model=None):
+            return "child"
+
+        def rlm_query_batched(self, prompts, model=None):
+            return ["child"] * len(prompts)
+
+    host, peer = socket.socketpair()
+    try:
+        write_msg(peer, {"type": "llm_query", "prompt": "hi"})
+        peer.close()
+        CallbackServer(tmp_path / "lm.sock", H())._serve_request(host)
+    finally:
+        try:
+            host.close()
+        except OSError:
+            pass
+
+
 @requires_docker
 def test_container_has_no_key_no_internet_and_context_is_mounted(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-should-not-enter-container")
@@ -112,6 +153,44 @@ def test_container_has_no_key_no_internet_and_context_is_mounted(tmp_path, monke
         obs = env.execute("print(context[:20])")
         assert obs.error is None
         assert obs.stdout.strip() == "MOUNTED_CONTEXT_PREFIX and more"[:20]
+    finally:
+        env.close()
+
+
+@requires_docker
+def test_rlm_query_can_outlive_cell_cpu_timeout(tmp_path):
+    """Nested host callbacks must not be killed by the cell CPU SIGALRM."""
+    from rlm.environments.docker import DockerEnv
+    from rlm.repl_ns import SubcallHandler
+
+    class Slow(SubcallHandler):
+        def llm_query(self, prompt, model=None):
+            return "leaf"
+
+        def llm_query_batched(self, prompts, model=None):
+            return ["leaf"] * len(prompts)
+
+        def rlm_query(self, prompt, model=None):
+            time.sleep(2.5)
+            return "slow-child"
+
+        def rlm_query_batched(self, prompts, model=None):
+            return ["child"] * len(prompts)
+
+    ws = tmp_path / "ws"
+    ws.mkdir()
+    env = DockerEnv(
+        handler=Slow(),
+        workspace=ws,
+        mode="string",
+        query="q",
+        cell_timeout_s=1.0,
+        exec_wait_s=None,
+    )
+    try:
+        obs = env.execute("print(rlm_query('x'))")
+        assert obs.error is None, obs.stderr
+        assert "slow-child" in obs.stdout
     finally:
         env.close()
 

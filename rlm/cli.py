@@ -33,6 +33,7 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--max-instructions", dest="max_instructions", type=int)
     common.add_argument("--max-budget", dest="max_budget_usd", type=float)
     common.add_argument("--timeout", dest="max_timeout_s", type=float)
+    common.add_argument("--cell-timeout", dest="cell_timeout_s", type=float)
     common.add_argument("--log-dir", dest="log_dir")
     common.add_argument("--verbose", action="store_true", default=None)
     common.add_argument("--config", dest="config_path")
@@ -132,6 +133,7 @@ def main(argv: list[str] | None = None) -> int:
             max_instructions=args.max_instructions,
             max_budget_usd=args.max_budget_usd,
             max_timeout_s=args.max_timeout_s,
+            cell_timeout_s=args.cell_timeout_s,
             log_dir=args.log_dir,
             verbose=True if args.verbose else None,
         )

@@ -88,6 +88,22 @@ def test_parser_accepts_bare_repl_header():
     assert not code.lstrip().startswith("repl")
 
 
+def test_parser_strips_stray_repl_headings_inside_cell():
+    text = """```repl
+hits = repo.grep(r"def generate")
+print(len(hits))
+repl
+lambda_hits = repo.grep(r"lambda")
+print(len(lambda_hits))
+```
+"""
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "repo.grep" in code
+    assert not any(line.strip() == "repl" for line in code.splitlines())
+    assert "lambda_hits" in code
+
+
 def test_parser_skips_json_fence():
     assert extract_repl_code('```json\n{"a": 1}\n```') is None
 

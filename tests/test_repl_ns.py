@@ -1,5 +1,11 @@
 from rlm.core.history import compact_repr
-from rlm.repl_ns import SubcallHandler, create_namespace, run_cell, snapshot_reserved
+from rlm.repl_ns import (
+    SubcallHandler,
+    create_namespace,
+    pause_alarm,
+    run_cell,
+    snapshot_reserved,
+)
 
 
 class Quiet(SubcallHandler):
@@ -64,3 +70,64 @@ def test_compact_repr_lists_preview_only():
     assert "0" in text
     assert "49" not in text
     assert "more" in text
+
+
+def test_pause_alarm_restores_remaining():
+    import signal
+
+    if not hasattr(signal, "setitimer"):
+        return
+    signal.setitimer(signal.ITIMER_REAL, 5)
+    try:
+        with pause_alarm():
+            assert signal.getitimer(signal.ITIMER_REAL)[0] == 0
+        left, _ = signal.getitimer(signal.ITIMER_REAL)
+        assert 3.5 < left <= 5
+    finally:
+        signal.setitimer(signal.ITIMER_REAL, 0)
+
+
+def test_ast_import_is_allowed():
+    ns, snap = _ns()
+    obs = run_cell(ns, "import ast\ntree = ast.parse('x = 1')\nlen(tree.body)\n", snap)
+    assert obs.error is None
+    assert "1" in (obs.stdout or "")
+
+
+def test_rlm_query_rejects_lambda_instead_of_str():
+    ns, snap = _ns()
+    obs = run_cell(ns, "out = rlm_query(lambda p: p)\nprint(out)\n", snap)
+    assert obs.error is None
+    assert "Error:" in (obs.stdout or "")
+    assert "str" in (obs.stdout or "")
+
+
+def test_rlm_query_batched_rejects_lambdas():
+    ns, snap = _ns()
+    obs = run_cell(
+        ns,
+        "out = rlm_query_batched([lambda p: p, lambda p: p])\nprint(out)\n",
+        snap,
+    )
+    assert obs.error is None
+    assert "Error:" in (obs.stdout or "")
+
+
+def test_final_var_accepts_bare_name_after_assign():
+    ns, snap = _ns()
+    obs = run_cell(ns, "result = 'ok'\nFINAL_VAR(result)\n", snap)
+    assert obs.error is None
+    assert obs.final == "ok"
+
+
+def test_final_var_missing_name_lists_bindings():
+    ns, snap = _ns()
+    run_cell(ns, "paths = ['a.py']\n", snap)
+    obs = run_cell(ns, "FINAL_VAR(COUNTS)\n", snap)
+    assert obs.final is None
+    assert obs.error
+    err = (obs.stderr or "") + (obs.error or "")
+    assert "COUNTS" in err
+    assert "paths" in err
+    assert "repl_ns.py" not in err
+    assert "invent" in err.lower() or "SHOW_VARS" in err

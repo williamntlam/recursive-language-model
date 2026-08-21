@@ -48,7 +48,7 @@ Any of these ends the loop and becomes `Completion.response`:
 | Form | Behavior |
 |---|---|
 | `FINAL(text)` | Stores `str(text)` as the answer |
-| `FINAL_VAR("name")` | Looks up `name` in the namespace and `FINAL`s it. Raises `NameError` if missing |
+| `FINAL_VAR("name")` or `FINAL_VAR(name)` | Looks up that name and `FINAL`s it. A bare identifier is quoted before exec. Raises `NameError` (with bound user names) if missing |
 | `answer["ready"] = True` with `answer["value"]` | Honored if `_rlm_final` was not set |
 
 `answer` starts as `{"ready": False, "value": None}`. Prefer `FINAL_VAR` so long answers never have to be printed.
@@ -67,7 +67,7 @@ User-created names (`findings`, `hits`, …) persist.
 
 `__import__` is restricted to:
 
-`re`, `json`, `pathlib`, `collections`, `textwrap`, `math`, `datetime`, `itertools`, `functools`, `typing`, `html`, `hashlib`, `copy`, `string`, `pprint`, `dataclasses`, `enum`, `abc`, `numbers`, `decimal`, `fractions`, `statistics`, `unicodedata`, `base64`, `difflib`, `fnmatch`, `operator`, `heapq`, `bisect`, `random`, `time`
+`re`, `json`, `ast`, `pathlib`, `collections`, `textwrap`, `math`, `datetime`, `itertools`, `functools`, `typing`, `html`, `hashlib`, `copy`, `string`, `pprint`, `dataclasses`, `enum`, `abc`, `numbers`, `decimal`, `fractions`, `statistics`, `unicodedata`, `base64`, `difflib`, `fnmatch`, `operator`, `heapq`, `bisect`, `random`, `time`
 
 Anything else raises `ImportError`. Banned builtins: `exec`, `eval`, `compile`, `open`, `breakpoint`, `exit`, `quit`, `help`. There is no `os.system` / `subprocess` on the allow list. `pathlib` can see `/workspace` (read-only mount) and tmpfs.
 
@@ -78,7 +78,7 @@ The container image does not include the OpenAI SDK.
 `rlm.repl_ns.run_cell`:
 
 1. `compile` + `exec` in the namespace with stdout/stderr redirected. If the last statement is an expression (and not `FINAL` / `FINAL_VAR`), it is evaluated and shown as a compact repr.
-2. In the container, `SIGALRM` kills the cell after `cell_timeout_s` (remaining wall-clock budget, else 60s). `FakeEnv` does not use alarms.
+2. In the container, `SIGALRM` kills **local** Python after `cell_timeout_s` (config default 300s). That timer is **paused** for the duration of `llm_query` / `rlm_query`. The host waits for the cell until `--timeout` / `max_timeout_s` remains, or **blocks with no cap** when those are unset. `FakeEnv` does not use alarms.
 3. Restore reserved names.
 4. Return an `Observation`: truncated stdout/stderr (sent to the host), full lengths, sha256 of stdout, optional `final`, optional traceback in `error`.
 
@@ -97,7 +97,7 @@ Sockets (unix, under a host temp dir mounted at `/ipc`):
 
 Init payload: `query`, `mode` (`string` / `repo` / `research`), `max_stdout_chars`, `cell_timeout_s`. The container binds workspace objects, then ACKs.
 
-Image: `rlm-repl:0.1.4`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
+Image: `rlm-repl:0.1.7`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
 
 ## Isolation recap
 

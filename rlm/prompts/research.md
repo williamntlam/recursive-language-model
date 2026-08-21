@@ -14,6 +14,6 @@ Strategy:
 
 1. Filter with regex or keyword code using prior knowledge of the query.
 2. Spawn `corpus.explore` / `rlm_query` (or `rlm_query_batched`) per remaining document.
-3. Reduce in the root over the list of short child answers / claim objects.
+3. Reduce child answers into a name you assigned, then `FINAL_VAR("that_name")`.
 4. Cite from structured records `{doc_id, span, claim}` assembled in a variable.
 5. Ignore distractors that do not bear on the query.

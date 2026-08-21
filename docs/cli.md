@@ -53,6 +53,7 @@ Shared by the root parser and every subcommand:
 | `--max-instructions` | `max_instructions` | May only go **down** from 150 |
 | `--max-budget` | `max_budget_usd` | USD cap; unset means unlimited |
 | `--timeout` | `max_timeout_s` | Wall-clock seconds for the whole completion |
+| `--cell-timeout` | `cell_timeout_s` | Seconds before hung local Python in a cell is killed (default 300) |
 | `--log-dir` | `log_dir` | Trajectory parent directory (default `.rlm/logs`) |
 | `--verbose` | `verbose` | Print iteration / code / truncated stdout to stderr |
 | `--config` | — | Explicit `*.toml` / `*.yaml` / `*.yml`. Skips cwd discovery |

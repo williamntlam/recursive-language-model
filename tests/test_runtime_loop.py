@@ -3,6 +3,7 @@ import json
 import pytest
 
 from rlm.core.budgets import Budget
+from rlm.errors import ReplErrorsExhausted
 from tests.util import FIXTURE_REPO, make_rlm, repl
 
 
@@ -124,6 +125,24 @@ def test_parse_error_logs_model_preview(tmp_path):
     events = (out.trajectory / "events.jsonl").read_text(encoding="utf-8")
     assert "parse_error" in events
     assert "I refuse to use a fence." in events
+    err = (out.trajectory / "error.txt").read_text(encoding="utf-8")
+    assert "parse_error" in err
+    assert "I refuse to use a fence." in err
+
+
+def test_repl_errors_exhausted_writes_error_txt(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [repl("1/0\n"), repl("1/0\n"), repl("1/0\n")],
+        max_consecutive_errors=2,
+    )
+    with pytest.raises(ReplErrorsExhausted):
+        rlm.completion("go", "context-" + "n" * 300)
+    runs = list((tmp_path / "logs").iterdir())
+    assert len(runs) == 1
+    text = (runs[0] / "error.txt").read_text(encoding="utf-8")
+    assert "ZeroDivisionError" in text
+    assert "ReplErrorsExhausted" in text
 
 
 def test_instruction_count_does_not_grow_with_observations(tmp_path):
