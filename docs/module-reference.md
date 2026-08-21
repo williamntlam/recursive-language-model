@@ -38,7 +38,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | Module | Role |
 |---|---|
 | `base.py` | `Environment` protocol: `execute`, `close` |
-| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.8"` |
+| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.11"` |
 | `fake.py` | In-memory REPL for tests |
 
 ## `rlm.domains`
@@ -115,7 +115,7 @@ class LMResponse:
 | `HARD_PROMPT_TOKEN_EXCLUSIVE` | `config.py` | `100_000` |
 | `DEFAULT_CELL_TIMEOUT_S` | `config.py` | `300.0` |
 | `ALLOWED_ENVIRONMENTS` | `config.py` | `{"docker"}` |
-| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.8"` |
+| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.11"` |
 | `RESERVED_NAMES` | `repl_ns.py` | tuple of protected identifiers |
-| `ALLOWED_IMPORTS` | `repl_ns.py` | stdlib allowlist |
+| `BLOCKED_IMPORTS` | `repl_ns.py` | `{"socket"}` (host IPC) |
 | `CHILD_QUERY` | `core/runtime.py` | fixed query string for nested RLMs |

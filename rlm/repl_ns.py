@@ -1,4 +1,4 @@
-"""Persistent REPL namespace: reserved names, FINAL_VAR, restricted imports."""
+"""Persistent REPL namespace: reserved names, FINAL_VAR, normal Python stdlib."""
 
 from __future__ import annotations
 
@@ -52,42 +52,10 @@ RESERVED_NAMES = (
     "manifest",
 )
 
-ALLOWED_IMPORTS = frozenset(
-    {
-        "re",
-        "json",
-        "pathlib",
-        "collections",
-        "textwrap",
-        "math",
-        "datetime",
-        "itertools",
-        "functools",
-        "typing",
-        "html",
-        "hashlib",
-        "copy",
-        "string",
-        "pprint",
-        "dataclasses",
-        "enum",
-        "abc",
-        "ast",
-        "numbers",
-        "decimal",
-        "fractions",
-        "statistics",
-        "unicodedata",
-        "base64",
-        "difflib",
-        "fnmatch",
-        "operator",
-        "heapq",
-        "bisect",
-        "random",
-        "time",
-    }
-)
+# Docker is the sandbox (no net, no API key, read-only workspace). The REPL
+# matches ordinary CPython so we do not fight pretrained import habits.
+# `socket` stays blocked so cells cannot speak the host IPC sockets.
+BLOCKED_IMPORTS = frozenset({"socket"})
 
 _SENTINEL = object()
 
@@ -172,10 +140,10 @@ def create_namespace(
 
     def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
         root = name.split(".")[0]
-        if root not in ALLOWED_IMPORTS:
+        if root in BLOCKED_IMPORTS:
             raise ImportError(
-                f"import of {name!r} is not allowed in the RLM REPL. "
-                "Use re, json, ast, pathlib, collections, textwrap, and bound helpers."
+                f"import of {name!r} is reserved for the RLM host RPC. "
+                "Use llm_query / rlm_query."
             )
         return _builtins.__import__(name, globals, locals, fromlist, level)
 
@@ -184,10 +152,12 @@ def create_namespace(
         for k in dir(_builtins)
         if not k.startswith("_")
     }
-    # Keep the usual safe builtins; drop things that shell out or introspect too hard.
-    for banned in ("exec", "eval", "compile", "open", "breakpoint", "exit", "quit", "help"):
+    # Keep the cell runner in charge of the process; everything else is normal Python.
+    for banned in ("breakpoint", "exit", "quit", "help"):
         safe_builtins.pop(banned, None)
     safe_builtins["__import__"] = _restricted_import
+    # Class statements need this; dir(builtins) skips dunders so it was dropped above.
+    safe_builtins["__build_class__"] = _builtins.__build_class__
 
     def bounded_print(*args: Any, **kwargs: Any) -> None:
         file = kwargs.pop("file", None)

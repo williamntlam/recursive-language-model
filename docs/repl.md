@@ -63,13 +63,11 @@ User-created names (`findings`, `hits`, …) persist.
 
 `context_0` is a copy of `context` when the host did not bind it separately.
 
-## Allowed imports
+## Stdlib
 
-`__import__` is restricted to:
+Docker is the sandbox (`network_mode=none`, no API key, read-only `/workspace`). Inside the container the REPL is ordinary CPython, including `os`, `sys`, `ast`, `open`, `subprocess`, and the rest of the stdlib the model was trained on.
 
-`re`, `json`, `ast`, `pathlib`, `collections`, `textwrap`, `math`, `datetime`, `itertools`, `functools`, `typing`, `html`, `hashlib`, `copy`, `string`, `pprint`, `dataclasses`, `enum`, `abc`, `numbers`, `decimal`, `fractions`, `statistics`, `unicodedata`, `base64`, `difflib`, `fnmatch`, `operator`, `heapq`, `bisect`, `random`, `time`
-
-Anything else raises `ImportError`. Banned builtins: `exec`, `eval`, `compile`, `open`, `breakpoint`, `exit`, `quit`, `help`. There is no `os.system` / `subprocess` on the allow list. `pathlib` can see `/workspace` (read-only mount) and tmpfs.
+The only blocked import is `socket` (the host RPC sockets live under `/ipc`). Banned builtins: `breakpoint`, `exit`, `quit`, `help`. `__build_class__` is kept so `class` statements work. `pathlib` / `open` can see `/workspace` (read-only) and tmpfs.
 
 The container image does not include the OpenAI SDK.
 
@@ -97,7 +95,7 @@ Sockets (unix, under a host temp dir mounted at `/ipc`):
 
 Init payload: `query`, `mode` (`string` / `repo` / `research`), `max_stdout_chars`, `cell_timeout_s`. The container binds workspace objects, then ACKs.
 
-Image: `rlm-repl:0.1.8`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
+Image: `rlm-repl:0.1.11`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
 
 ## Isolation recap
 

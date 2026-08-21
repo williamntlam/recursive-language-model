@@ -138,6 +138,23 @@ def test_rlm_query_batched_accepts_question_path_dicts():
     assert not cap.seen[0].startswith("Error:")
 
 
+def test_class_statement_and_ast_visitor_work():
+    ns, snap = _ns()
+    obs = run_cell(
+        ns,
+        "import ast\n"
+        "class Finder(ast.NodeVisitor):\n"
+        "    def visit_Name(self, node):\n"
+        "        self.seen = node.id\n"
+        "f = Finder()\n"
+        "f.visit(ast.parse('x = 1'))\n"
+        "f.seen\n",
+        snap,
+    )
+    assert obs.error is None, obs.stderr
+    assert "x" in (obs.stdout or "")
+
+
 def test_final_var_accepts_bare_name_after_assign():
     ns, snap = _ns()
     obs = run_cell(ns, "result = 'ok'\nFINAL_VAR(result)\n", snap)
@@ -156,3 +173,27 @@ def test_final_var_missing_name_lists_bindings():
     assert "paths" in err
     assert "repl_ns.py" not in err
     assert "invent" in err.lower() or "SHOW_VARS" in err
+
+
+def test_os_and_sys_are_normal_python():
+    ns, snap = _ns()
+    obs = run_cell(
+        ns,
+        "import os, sys\n"
+        "from os.path import basename\n"
+        "basename('a/b.py'), os.path.join('a', 'b'), sys.version_info[0]\n",
+        snap,
+    )
+    assert obs.error is None, obs.stderr
+    assert "b.py" in (obs.stdout or "")
+    assert "3" in (obs.stdout or "")
+    obs2 = run_cell(ns, "print(hasattr(os, 'system'), 'modules' in dir(sys))\n", snap)
+    assert obs2.error is None, obs2.stderr
+    assert "True" in (obs2.stdout or "")
+
+
+def test_socket_import_is_blocked():
+    ns, snap = _ns()
+    obs = run_cell(ns, "import socket\n", snap)
+    assert obs.error
+    assert "socket" in (obs.stderr or obs.error or "")
