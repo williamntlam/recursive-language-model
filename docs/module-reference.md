@@ -21,7 +21,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 |---|---|
 | `runtime.py` | Iteration loop, `RuntimeHandler`, `leaf_complete`, `child_rlm`, `batched`, string metadata/workspace |
 | `types.py` | `Message`, `Usage`, `Completion`, `LMResponse`, `Observation`, `PromptPayload` |
-| `history.py` | `format_observation`, `compact_repr`, `measure_text`, `measure_ast`, `plan_reads`, `compact_parent_hist` |
+| `history.py` | `format_observation`, `compact_repr`, `measure_text`, `measure_ast`, `plan_reads`, `route_read_subcall`, `ASK_LEAF_CHARS` |
 | `parse.py` | Last `repl` / `python` fence |
 | `prompt_guard.py` | `count_tokens`, `count_instructions`, `assert_sendable` |
 | `budgets.py` | `Budget`, `estimate_cost_usd`, `PRICES_PER_MILLION` |
@@ -116,6 +116,10 @@ class LMResponse:
 | `DEFAULT_CELL_TIMEOUT_S` | `config.py` | `300.0` |
 | `ALLOWED_ENVIRONMENTS` | `config.py` | `{"docker"}` |
 | `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.13"` |
+| `ASK_LEAF_CHARS` | `core/history.py` | `24_000` (repo.ask / corpus.ask leaf cutoff) |
+| `CHARS_PER_TOKEN` | `core/history.py` | `4` (REPL token estimate) |
+| `PARENT_TOKEN_NUDGE` | `core/history.py` | `1500` |
+| `HIST_KEEP_RECENT` | `core/history.py` | `4` |
 | `RESERVED_NAMES` | `repl_ns.py` | tuple of protected identifiers |
 | `BLOCKED_IMPORTS` | `repl_ns.py` | `{"socket"}` (host IPC) |
 | `CHILD_QUERY` | `core/runtime.py` | fixed query string for nested RLMs |

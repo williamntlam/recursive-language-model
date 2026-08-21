@@ -38,8 +38,9 @@ Top-level:
   pytorch/
   ├── aten/
   └── torch/
-Use repo.tree(), repo.grep(), repo.read(), repo.ask(path, question, start, end).
-Do not print entire files. Assign them to variables and llm_query slices (prefer repo.ask).
+Use repo.tree(), repo.grep(), repo.file_text + ast, repo.measure, repo.plan, repo.ask.
+Do not print entire files. Classify with code here; llm_query tight slices;
+child RLM only if plan_reads / repo.plan says route is child.
 ```
 
 `Git HEAD` is the short hash from `.git/HEAD` when present, else `none`.
@@ -67,10 +68,10 @@ repo.explore(question: str) -> str
 | `grep` | Regex over text-ish files. Hits: `path`, `line_no`, `line` (line truncated to 400 chars). Attribute or `h["path"]` / `h[0]` |
 | `files` | `path`, `n_bytes`, `n_lines`, `sha` (16 hex chars) for text-ish files only |
 | `file_text` | Full UTF-8 text as a **value**. Assign it; do not print it |
-| `measure` | `n_chars` / `n_tokens` / `route` for a span. No body |
-| `plan` | `{n_fit, n_child, n_chunks}` for `{path, start, end}` spans |
-| `ask` | Slice under ~24k chars → `llm_query`; larger read → child RLM with the same repo |
-| `explore` | Always `rlm_query` with this repo. Use when `n_child > 0` and you cannot chunk |
+| `measure` | `n_chars` / `n_tokens` / `route` (`fit` or `child`) for a span. No body. Optional `chunks` when oversized |
+| `plan` | `{n_fit, n_child, n_chunks, spans}` for path strings or `{path, start, end}` dicts |
+| `ask` | Slice under 24k chars (`ASK_LEAF_CHARS`) → `llm_query`; larger read → child RLM with the same repo |
+| `explore` | Always `rlm_query` with this repo. Use when `n_child > 0` and you cannot chunk into leaves |
 
 Paths are resolved under `repo.root`. Escaping the root raises `ValueError` (`Path.relative_to`).
 
@@ -151,7 +152,7 @@ corpus.ask(doc_id: str, question: str, start: int | None = None, end: int | None
 corpus.explore(question: str) -> str
 ```
 
-`Document.text` is the full extracted string. Assign it; slice it; `llm_query` a piece. Do not print the whole document.
+`Document.text` is the full extracted string. Assign it; slice it; `llm_query` a piece. Do not print the whole document. `corpus.measure` / `corpus.plan` match `repo.measure` / `repo.plan` (sizes, no bodies; `n_fit` / `n_child`).
 
 ### Intended patterns
 

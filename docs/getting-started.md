@@ -1,5 +1,7 @@
 # Getting started
 
+v0 **understands** a tree or corpus. It does not implement a spec. Install, then ask questions that must be answered from **this** source.
+
 ## Requirements
 
 - Python 3.12+
@@ -33,14 +35,14 @@ Build the REPL image on first real completion, or ahead of time:
 docker build -t rlm-repl:0.1.13 -f docker/Dockerfile .
 ```
 
-The runtime builds this tag automatically if it is missing and Docker is reachable.
+The runtime builds this tag automatically if it is missing and Docker is reachable. Bump `IMAGE_TAG` in `rlm/environments/docker.py` when files copied into the image change (`repl_ns.py`, `history.py`, `domains/repo.py`, …).
 
 ## First queries
 
 The query always comes **after `--`**. Everything before `--` is flags and paths.
 
 ```bash
-# Repository Q&A
+# Repository Q&A (orientation, not a PR)
 uv run rlm ask ./pytorch -- "Where is autocast implemented, and how does it interact with bfloat16 on CPU?"
 
 # Document corpus
@@ -56,11 +58,16 @@ uv run rlm ask ./repo --dry-run -- "preview the manifest and prompt"
 For a larger local clone, put it under `codebases/` (gitignored). See [`codebases/README.md`](../codebases/README.md).
 
 ```bash
-git clone --depth 1 https://github.com/pytorch/pytorch.git codebases/pytorch
-uv run rlm ask codebases/pytorch -- "Where is autocast implemented?"
+git clone --depth 1 https://github.com/huggingface/transformers.git codebases/transformers
+uv run rlm ask codebases/transformers --verbose -- \
+  "Under src/transformers/models, census *ForCausalLM / *ForConditionalGeneration forward() patterns with ast. llm_query only unclear bodies. Do not spawn one child per file."
 ```
 
+Do **not** add “use `repo.explore` one file at a time.” That forces hundreds of gpt-5 children and is a poor way to answer a structural question. Grep + `ast` in the parent **is** reading `forward()`, not answering from grep hits on the class line.
+
 Stdout is the answer. Stderr gets a one-line usage footer (`tokens`, estimated `cost`, iterations, subcalls, trajectory path, `report.html`). Open that HTML file in a browser to see the recursion timeline. Rebuild it later with `uv run rlm report .rlm/logs`.
+
+**What “worked” looks like on a huge tree:** parent `prompt_tokens` on `root_lm` events in the low thousands; `subcalls` near 0 (or a few `llm_query`s); `iters` a handful. Hundreds of `rlm_query` events means the strategy was ignored. A `parse_error` in `error.txt` means that turn had no ````repl` fence (the model wrote `FINAL_VAR` in prose); the next turn can recover.
 
 ## Python
 

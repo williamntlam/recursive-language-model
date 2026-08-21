@@ -13,7 +13,7 @@ The host process owns the RLM loop, OpenAI calls, prompt guard, and trajectory l
 │  RLM Runtime                                                    │
 │  - iteration loop                                               │
 │  - history policy (metadata-only observations)                  │
-│  - recursion (llm_query / rlm_query / batched)                  │
+│  - recursion (llm_query leaves; rlm_query only if a span is still too large)                  │
 │  - budgets (depth, iterations, USD, tokens, time, errors)       │
 │  - prompt guard (<100k tokens, ≤150 instructions per call)      │
 │  - trajectory logger                                            │
@@ -56,7 +56,7 @@ Host: load config, require OPENAI_API_KEY
         │
         ▼
 Loop:  gpt-5 writes ```repl``` Python
-       container executes (grep / read / llm_query slices)
+       container executes (grep / ast / measure / llm_query on unclear slices)
        host appends truncated stdout to hist   ← never the file dump
        until FINAL / FINAL_VAR / answer["ready"]
         │
@@ -64,7 +64,17 @@ Loop:  gpt-5 writes ```repl``` Python
 Return answer + usage + trajectory directory
 ```
 
-Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Repo/research children **inherit the same workspace**, so they can keep grepping; they do not need the parent to stuff the file into the prompt. Prefer grep/`ast` in the parent and `llm_query` / `repo.ask` on unclear slices; `rlm_query_batched` / `repo.explore` only when a piece is still too large.
+Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Repo/research children **inherit the same workspace**, so they can keep grepping; they do not need the parent to stuff the file into the prompt.
+
+**Routing (smart zone).** Classify in the parent REPL (`grep`, `ast.parse`, `measure_ast`, `plan_reads`). `llm_query` / `repo.ask` for a span that **fits** (~24k chars) but that code cannot decide. `rlm_query` / `repo.explore` only when `route == "child"` (or you cannot chunk). Do not spawn one gpt-5 child per file to count AST patterns. Parent `hist` should stay in the **low thousands** of tokens; 100k is a backstop.
+
+```
+span  →  measure / plan_reads
+          │
+          ├─ fit + Python can classify  →  0 LM calls (counts in variables)
+          ├─ fit + unclear              →  llm_query / repo.ask  (gpt-5-mini)
+          └─ too large                  →  n_chunks leaves  or  1 child RLM
+```
 
 ## How context enters the container
 

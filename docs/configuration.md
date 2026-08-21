@@ -77,6 +77,8 @@ Hard ceilings (cannot raise):
 
 `RLM(max_prompt_tokens=100_000)` or `max_instructions=151` fails at `Config` construction.
 
+`ASK_LEAF_CHARS` (24,000) is a code constant in `rlm/core/history.py`, not a config key. It decides `repo.ask` / `corpus.ask` leaf vs child. `max_observation_chars` (default 3000) is what keeps **parent** `hist` small.
+
 ## Examples
 
 TOML (`rlm.toml`):

@@ -39,6 +39,8 @@ uv run rlm ask ./repo --config ./rlm.yaml -- "..."
 
 There is no `--env local`. The product REPL is Docker. There is no `--api-key` (keys show up in shell history).
 
+For **repo-wide** questions, do not ask the model to `explore` / `rlm_query_batched` one file at a time. That is a stress test of recursion, not a good census. Ask it to grep + `ast` / `measure_ast` in the REPL and `llm_query` only unclear bodies. See the [root README](../README.md) query example.
+
 ## Flags
 
 Shared by the root parser and every subcommand:
@@ -86,7 +88,7 @@ On success:
 # tokens=1234+56 cost=$0.0123 iters=4 subcalls=12 log=.rlm/logs/20260820-180000-abcd1234 html=.rlm/logs/20260820-180000-abcd1234/report.html
 ```
 
-`cost` is `$` plus four decimals, or `$?` if cost is unknown.
+`cost` is `$` plus four decimals, or `$?` if cost is unknown. `subcalls` counts `llm_query` / `rlm_query` (including batches). A large-repo AST census that never left the parent REPL can finish with `subcalls=0`; that is success, not a truncated run. Hundreds of `rlm_query` events usually means the query asked for one child per file.
 
 ## Exit codes
 

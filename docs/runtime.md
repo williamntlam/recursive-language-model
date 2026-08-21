@@ -48,11 +48,12 @@ preview, not the body). Empty cells get a short hint instead of silence.
 
 The parent stores **executed code cells**, not the model's surrounding prose.
 
-After `HIST_KEEP_RECENT` (6) code/observation pairs, older pairs are replaced
+After `HIST_KEEP_RECENT` (**4**) code/observation pairs, older pairs are replaced
 with stubs (`compacted cell` / `compacted observation`). Values stay in the
-REPL. If the next parent send would exceed `PARENT_TOKEN_NUDGE` (2500 tokens),
-the observation includes a reminder to `llm_query` / `repo.ask` / `corpus.ask`
-instead of printing file bodies.
+REPL. If the next parent send would exceed `PARENT_TOKEN_NUDGE` (**1500** tokens),
+the observation includes a reminder to grep/`ast` in the REPL, use
+`llm_query` / `repo.ask` on tight slices, and `rlm_query` only if a file is
+still too large.
 
 Never appended:
 
@@ -84,6 +85,17 @@ Module: `rlm.core.prompt_guard`. `LMClient.complete` is **not** responsible for 
 | `llm_query` / `rlm_query` | Return an error **string** into the REPL (`Error: prompt is N tokens; max is 99999. Slice the argument.`). One oversize leaf does not kill the batch. |
 
 100k is a **backstop**, not a target. The parent should sit in the low thousands of tokens. Leaves should receive only the snippet they need.
+
+### Leaf vs child (`repo.ask` / `corpus.ask`)
+
+`route_read_subcall` in `rlm/core/history.py`:
+
+- Slice **≤ `ASK_LEAF_CHARS` (24,000)** → `llm_query` (`gpt-5-mini`).
+- Larger → `rlm_query` with the same `repo` / `corpus` bound. The child prompt names the target; it does not embed the file.
+
+The REPL also exposes `measure`, `measure_ast`, and `plan_reads` (and `repo.measure` / `repo.plan`). `n_tokens` is `(n_chars + 3) // 4` — tiktoken is not in the image. `plan_reads` returns `n_fit`, `n_child`, `n_chunks`. Use `n_child` (or split into `n_chunks` leaves); do not derive cardinality from how full the parent window is.
+
+See [REPL](repl.md) and [Domains](domains.md).
 
 This limit is on **input context of an LM call**, not on REPL memory and not on the final answer. `FINAL_VAR` may return a long string assembled in the container. That string is not prompt text unless a later `llm_query` tries to send it.
 
@@ -123,7 +135,7 @@ Exposed-method catalogs live in `rlm/prompts/catalog.py`.
 1. `child_depth = depth + 1`.
 2. If `child_depth > max_depth`: degrade to `llm_query` **only if** the prompt is under 100k; else return `Error: depth cap; slice smaller…`.
 3. Else spawn a new `Runtime` with `budget.inherit()`:
-   - **repo / research:** same workspace and domain. The prompt is the child's *query*. The child can `grep` / `explore` further. File bytes never enter the parent prompt.
+   - **repo / research:** same workspace and domain. The prompt is the child's *query*. The child can grep/`ast` further. File bytes never enter the parent prompt.
    - **string:** the prompt is bound as `context` with a fixed child query (“Execute the task described in the `context` variable…”).
 4. Own container (product path) or own `FakeEnv` (tests). Each child clones `repo` / `corpus` so `_query_fn` is not shared across concurrent batches.
 5. Fold child spent USD / tokens / iterations / subcalls into the parent budget.

@@ -43,7 +43,7 @@ The raw query string is **not** stored in `meta.json` (only its length and sha25
 |---|---|
 | `root_lm` | Parent (or child RLM root) completion: model, prompt_tokens, instruction_count, completion_tokens, latency_s, cost_usd, iteration, depth |
 | `repl` | Cell executed: full code (capped at 100k chars), stdout[:4000], stderr[:4000], error, tokens, instruction_count |
-| `parse_error` | No `repl` fence |
+| `parse_error` | No executable `repl` / `python` fence. `error.txt` stores a preview (e.g. bare `FINAL_VAR("RESULTS")` in prose). The run can recover on the next turn |
 | `llm_query` | Leaf call |
 | `rlm_query` | Child finished: `child_depth`, `answer_n_chars` |
 
@@ -84,8 +84,11 @@ Leaf oversize prompts do **not** raise to the CLI: they return `Error: …` into
 
 If an answer is wrong, open `events.jsonl` and check:
 
-1. Which slices were grepped/read (code cells).
-2. Which `llm_query` / `rlm_query` calls ran (`prompt_tokens` per event).
+1. Which slices were grepped/read (code cells). A 2–4 event file can still mean thousands of files were parsed **inside one cell**.
+2. Which `llm_query` / `rlm_query` calls ran (`prompt_tokens` per event). `subcalls=0` on a repo census often means the parent classified with `ast` only.
 3. That `prompt_tokens` on parent `root_lm` events stays in the low thousands.
 4. That `instruction_count` is **constant** across iterations. If it trends up, instructions are leaking into observations — that is a bug.
 5. That the bound corpus never appears in parent messages (the history invariant).
+6. That “exceptions” in the answer match the **minority** pattern, not “everything that is not both-shifts-in-forward.”
+
+`error.txt` is appended live (`parse_error`, REPL stderr, abort). A lone `parse_error: no executable code fence` plus a preview of `FINAL_VAR("RESULTS")` means that turn was not a Python exception — the model forgot the fence.

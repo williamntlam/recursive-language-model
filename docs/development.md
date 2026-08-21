@@ -68,7 +68,8 @@ Invariants covered today:
 | `test_config.py` | TOML ↔ YAML equivalence; both-present error; auth keys rejected |
 | `test_runtime_loop.py` | Reserved names restored; batch alignment; budget inheritance; `rlm_query` child |
 | `test_cli.py` | `--help`; `--dry-run` without Docker |
-| `test_repo_env.py` | Ignore rules, grep/read, path safety |
+| `test_repo_env.py` | Ignore rules, grep/read, path safety, `ask` leaf vs child (24k chars) |
+| `test_span_plan.py` | `measure` / `measure_ast` / `plan_reads`; `n_child == 0` for small forwards |
 | `test_corpus_env.py` | Ingest, search/slice, distractors |
 | `test_docker_repl.py` | Marked: no key in container, no public net, mount works |
 | `test_report.py` | Static `report.html`; XSS escaped; `rlm report` |
@@ -85,11 +86,11 @@ Keep prompts in `rlm/prompts/*.md` so they can be versioned without code changes
 
 | File | Role |
 |---|---|
-| `root.md` | 8 RLM rules + builtin list |
-| `repo.md` | `repo.*` API + strategy hints |
-| `research.md` | `corpus.*` API + map-reduce hints |
+| `root.md` | RLM rules (classify in REPL; leaf vs child) + builtin list |
+| `repo.md` | `repo.*` API including `measure` / `plan` + strategy |
+| `research.md` | `corpus.*` API including `measure` / `plan` + strategy |
 | `leaf.md` | Extract / classify / summarize only |
-| `catalog.py` | Exposed method names for the instruction counter |
+| `catalog.py` | Exposed method names for the instruction counter (`measure`, `measure_ast`, `plan_reads`, `repo.measure`, `repo.plan`, …) |
 
 Do not grow the generic rule list without removing something else. The 150-instruction ceiling is load-bearing.
 

@@ -40,7 +40,21 @@ Batch helpers are **index-aligned** and **per-item failure tolerant**: one faile
 
 `SHOW_VARS()` lists names with a size hint (`str n_chars=…`, `list len=…`) without dumping values.
 
-`repo.ask(path, question, start=None, end=None)` and `corpus.ask(...)` read a slice: under ~24k chars goes to `llm_query`; a larger read spawns `rlm_query`. `repo.measure` / `measure_ast` / `plan_reads` size spans (`n_chars`, `n_tokens`, `route`) without returning bodies. `n_child` is how many oversized spans need a child (or split into `n_chunks` leaves). `repo.explore` / `corpus.explore` always spawn a child RLM that **inherits the same repo or corpus**. Prefer `file_text` + `ast` / `ask` over `explore` unless `n_child > 0`.
+### Sizing spans (`measure` / `measure_ast` / `plan_reads`)
+
+These run **in the container** (no tiktoken). Token counts are `(n_chars + 3) // 4`.
+
+| Call | Result |
+|---|---|
+| `measure(text)` | `{n_chars, n_lines, n_tokens, route, n_chunks, leaf_chars}` plus `chunks` (line ranges) when `route == "child"` |
+| `measure_ast(source)` | One row per `ClassDef` / `FunctionDef` / `AsyncFunctionDef`: `name`, `qualname`, `kind`, `start`, `end`, plus the size fields. **No function bodies.** Filter in Python (`[s for s in rows if s["name"] == "forward"]`) then `plan_reads` |
+| `plan_reads(spans)` | `{n_fit, n_child, n_chunks, leaf_chars, spans}`. Items may be texts, char counts, or dicts already measured |
+
+`route == "fit"` means the span is ≤ 24k characters (one leaf, or classify with `ast` here). `route == "child"` means it would bloat a leaf; spawn a child RLM **or** map `n_chunks` line-aligned leaves.
+
+`repo.measure(path, start, end)` / `corpus.measure(...)` size a slice **without returning the body**. `repo.plan([{path, start, end}, ...])` reads each span, measures, drops bodies, and returns the same summary as `plan_reads`.
+
+`repo.ask` / `corpus.ask` use the same 24k cutoff: fit → `llm_query`, oversized → `rlm_query`. `repo.explore` / `corpus.explore` always spawn a child that **inherits** the same repo or corpus. Prefer `file_text` + `ast` / `ask` unless `n_child > 0`.
 
 A cell's **last expression** is displayed like a notebook (compact repr). `FINAL` / `FINAL_VAR` as the last expression are not displayed. `print` of a large string is truncated in the container before it reaches the host.
 

@@ -6,6 +6,8 @@ Public exports (`rlm/__init__.py`):
 from rlm import RLM, Config, Completion, Usage, load_corpus, load_repo
 ```
 
+`RLM` is a **read-only** facade: bind a string, repo, or corpus in Docker and get a cited answer. It does not apply patches. REPL sizing helpers (`measure`, `plan_reads`) are documented in [REPL](repl.md), not on this class.
+
 ## `RLM`
 
 Facade over config, OpenAI, Docker, and the iteration loop.
@@ -69,7 +71,7 @@ out = rlm.completion(
 
 ### `ask_repo(path: str | Path, query: str) -> Completion`
 
-Loads `path` with `load_repo`, binds `query`, `repo`, and `manifest`, uses the repo system prompt. Workspace is the repo root (not deleted afterward).
+Loads `path` with `load_repo`, binds `query`, `repo`, and `manifest`, uses the repo system prompt. Workspace is the repo root (not deleted afterward). Read-only census: the model greps and parses in Docker; it does not apply patches.
 
 ```python
 out = rlm.ask_repo(path="./pytorch", query="How does autograd handle views?")
@@ -120,7 +122,7 @@ corpus = load_corpus("./papers")              # Corpus
 corpus = load_corpus(["a.md", "b.pdf"])       # concatenated, re-id'd
 ```
 
-Loaders are useful on their own for inspection; the RLM methods call them internally.
+Loaders are useful on their own for inspection; the RLM methods call them internally. Sizing helpers (`measure`, `measure_ast`, `plan_reads`) are **REPL builtins**, not methods on `RLM`. See [REPL](repl.md).
 
 ## Typical session
 
