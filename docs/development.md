@@ -7,6 +7,7 @@ recursive-language-model/
 ├── docs/                          # this documentation
 ├── .spec/001-initialize-repo/     # product spec (source of design decisions)
 ├── README.md
+├── LICENSE                        # MIT
 ├── pyproject.toml                 # package recursive-language-model, script rlm
 ├── uv.lock
 ├── .env.example

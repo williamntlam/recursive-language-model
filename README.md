@@ -40,7 +40,7 @@ flowchart TB
   user --> host
   host --> docker
   host --> parent
-  parent -->|"```repl cell```"| docker
+  parent -->|"repl cell"| docker
   docker -->|"truncated observation"| parent
   docker -->|"RPC, no API key in container"| host
   host --> leaf
@@ -90,7 +90,7 @@ trajectory .rlm/logs/<id>/                        grep, ast, measure, plan_reads
 flowchart TD
   span["Isolated span: path:start-end or AST node"]
   m["measure / measure_ast / repo.plan"]
-  fit{"n_chars ≤ 24k?"}
+  fit{"n_chars <= 24k?"}
   code{"Can Python classify it?"}
   leaf["llm_query / repo.ask → gpt-5-mini"]
   child["rlm_query / repo.explore → child RLM"]
@@ -205,3 +205,7 @@ uv run pytest
 ```
 
 Docker tests are skipped when the daemon is absent (`pytest -m docker` to select them).
+
+## License
+
+[MIT](LICENSE)
