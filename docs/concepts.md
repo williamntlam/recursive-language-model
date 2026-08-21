@@ -57,9 +57,9 @@ These are not suggestions. Config may **lower** the numeric ceilings; it cannot 
 
 Depth is however many nested RLMs the context needs, not a fixed tree of 1.
 
-- `llm_query(prompt)` — one plain completion. No REPL. Cheap (`gpt-5-mini` by default). Use on a tight snippet that already fits.
-- `rlm_query(prompt)` — spawn a child RLM with its own REPL and Docker container. **Default** for a file, document, or subproblem. In `ask` / `research`, the child inherits the same `repo` / `corpus` (the subtask string is the query, not a dump of the file). In string `completion`, the prompt is bound as the child's `context`.
-- Fan out: one child per file (`repo.explore` / `rlm_query_batched`). Recurse again inside a child if the piece is still large.
+- `llm_query(prompt)` — one plain completion. No REPL. Cheap (`gpt-5-mini` by default). Use on a tight snippet that already fits, or a span code cannot classify.
+- `rlm_query(prompt)` — spawn a child RLM with its own REPL and Docker container. Use when a file or document is **still too large** for one leaf. In `ask` / `research`, the child inherits the same `repo` / `corpus` (the subtask string is the query, not a dump of the file). In string `completion`, the prompt is bound as the child's `context`.
+- Parent work: grep / `ast` / `measure_ast` / `plan_reads` in the REPL. Fan out `llm_query_batched` (or `repo.ask`) on unclear `route=="fit"` slices. `n_child` is how many oversized spans need `rlm_query` (or split into `n_chunks` leaves).
 - `max_depth` (default **16**) is a **safety cap**, not the operating point. At the cap, `rlm_query` degrades to `llm_query` **only if** the prompt is under 100k tokens. Otherwise it returns an error: slice smaller at this level.
 
 ## Two products, one runtime
@@ -67,7 +67,7 @@ Depth is however many nested RLMs the context needs, not a fixed tree of 1.
 | | `rlm ask <path>` | `rlm research <path>` | `rlm.completion` |
 |---|---|---|---|
 | Bound object | `repo` | `corpus` | `context` (string) |
-| Peek API | `tree`, `glob`, `grep`, `read`, `file_text`, `ask`, `explore` | `search`, `get`, `slice`, `ask`, `explore` | slices, regex, `len` |
+| Peek API | `tree`, `glob`, `grep`, `read`, `file_text`, `measure`, `plan`, `ask`, `explore` | `search`, `get`, `slice`, `measure`, `plan`, `ask`, `explore` | slices, regex, `len`, `measure`, `measure_ast`, `plan_reads` |
 | v0 will not | edit, test, commit, LSP | live web, DOI graphs | — |
 
 There is **no bash**. Exploration is Python helpers inside Docker.

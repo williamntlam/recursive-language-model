@@ -178,7 +178,7 @@ class Runtime:
                         "No executable code fence found. Write Python inside a "
                         "fenced ```repl (or ```python) block. Do not answer in prose; "
                         "keep findings in variables and finish with FINAL / FINAL_VAR. "
-                        "To read a file, spawn rlm_query / repo.explore, or repo.ask a tight span."
+                        "To read a file, grep/ast it here, or repo.ask a tight span."
                     )
                     hist.append(Message("user", note))
                     preview = (lm.text or "")[:4000]
@@ -402,8 +402,8 @@ class Runtime:
             }
             metadata = (self._metadata or "") + (
                 "\nYou are a nested RLM with the same repository. "
-                "Do only the subtask. Recurse with rlm_query / repo.explore if needed. "
-                "FINAL a short cited answer.\n"
+                "Do only the subtask. Grep/ast here; llm_query tight slices; "
+                "recurse only if still too large. FINAL a short cited answer.\n"
             )
             return prompt, metadata, bindings, self._workspace, "repo", False, "repo"
         if mode == "research" and self._workspace is not None:
@@ -415,7 +415,8 @@ class Runtime:
             }
             metadata = (self._metadata or "") + (
                 "\nYou are a nested RLM with the same corpus. "
-                "Do only the subtask. Recurse if needed. FINAL a short cited answer.\n"
+                "Do only the subtask. Search/slice here; llm_query tight spans; "
+                "recurse only if still too large. FINAL a short cited answer.\n"
             )
             return prompt, metadata, bindings, self._workspace, "research", False, "research"
         workspace, cleanup = workspace_for_string(prompt)

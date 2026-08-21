@@ -124,8 +124,29 @@ def test_large_ask_routes_to_rlm_query_not_leaf():
 
     repo._query_fn = llm
     repo._rlm_fn = rlm
-    repo.read = lambda path, start=None, end=None: "x" * 5000  # noqa: ARG005
+    repo.read = lambda path, start=None, end=None: "x" * 50_000  # noqa: ARG005
     out = repo.ask("src/utils.py", "summarize")
     assert out == "from-child"
     assert seen["rlm"] == 1
     assert seen["llm"] == 0
+
+
+def test_medium_ask_routes_to_leaf_not_rlm_query():
+    repo = load_repo(FIXTURE_REPO)
+    seen = {"llm": 0, "rlm": 0}
+
+    def llm(prompt):
+        seen["llm"] += 1
+        return "leaf"
+
+    def rlm(prompt):
+        seen["rlm"] += 1
+        return "from-child"
+
+    repo._query_fn = llm
+    repo._rlm_fn = rlm
+    repo.read = lambda path, start=None, end=None: "x" * 5000  # noqa: ARG005
+    out = repo.ask("src/utils.py", "summarize")
+    assert out == "leaf"
+    assert seen["llm"] == 1
+    assert seen["rlm"] == 0

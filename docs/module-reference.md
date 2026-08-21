@@ -21,7 +21,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 |---|---|
 | `runtime.py` | Iteration loop, `RuntimeHandler`, `leaf_complete`, `child_rlm`, `batched`, string metadata/workspace |
 | `types.py` | `Message`, `Usage`, `Completion`, `LMResponse`, `Observation`, `PromptPayload` |
-| `history.py` | `format_observation`, `compact_repr`, `compact_parent_hist`, `sha256_text`, `hist_contains_context` |
+| `history.py` | `format_observation`, `compact_repr`, `measure_text`, `measure_ast`, `plan_reads`, `compact_parent_hist` |
 | `parse.py` | Last `repl` / `python` fence |
 | `prompt_guard.py` | `count_tokens`, `count_instructions`, `assert_sendable` |
 | `budgets.py` | `Budget`, `estimate_cost_usd`, `PRICES_PER_MILLION` |
@@ -38,7 +38,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | Module | Role |
 |---|---|
 | `base.py` | `Environment` protocol: `execute`, `close` |
-| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.11"` |
+| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.13"` |
 | `fake.py` | In-memory REPL for tests |
 
 ## `rlm.domains`
@@ -115,7 +115,7 @@ class LMResponse:
 | `HARD_PROMPT_TOKEN_EXCLUSIVE` | `config.py` | `100_000` |
 | `DEFAULT_CELL_TIMEOUT_S` | `config.py` | `300.0` |
 | `ALLOWED_ENVIRONMENTS` | `config.py` | `{"docker"}` |
-| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.11"` |
+| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.13"` |
 | `RESERVED_NAMES` | `repl_ns.py` | tuple of protected identifiers |
 | `BLOCKED_IMPORTS` | `repl_ns.py` | `{"socket"}` (host IPC) |
 | `CHILD_QUERY` | `core/runtime.py` | fixed query string for nested RLMs |

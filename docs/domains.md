@@ -53,6 +53,8 @@ repo.read(path: str, start: int | None = None, end: int | None = None) -> str
 repo.grep(pattern: str, glob: str | None = None) -> list[GrepHit]
 repo.files() -> list[FileMeta]
 repo.file_text(path: str) -> str
+repo.measure(path: str, start: int | None = None, end: int | None = None) -> dict
+repo.plan(spans: list | dict | str) -> dict
 repo.ask(path: str, question: str, start: int | None = None, end: int | None = None) -> str
 repo.explore(question: str) -> str
 ```
@@ -65,8 +67,10 @@ repo.explore(question: str) -> str
 | `grep` | Regex over text-ish files. Hits: `path`, `line_no`, `line` (line truncated to 400 chars). Attribute or `h["path"]` / `h[0]` |
 | `files` | `path`, `n_bytes`, `n_lines`, `sha` (16 hex chars) for text-ish files only |
 | `file_text` | Full UTF-8 text as a **value**. Assign it; do not print it |
-| `ask` | Tight slice → `llm_query`; larger read → child RLM with the same repo |
-| `explore` | Always `rlm_query` with this repo. Default way to investigate a file or module |
+| `measure` | `n_chars` / `n_tokens` / `route` for a span. No body |
+| `plan` | `{n_fit, n_child, n_chunks}` for `{path, start, end}` spans |
+| `ask` | Slice under ~24k chars → `llm_query`; larger read → child RLM with the same repo |
+| `explore` | Always `rlm_query` with this repo. Use when `n_child > 0` and you cannot chunk |
 
 Paths are resolved under `repo.root`. Escaping the root raises `ValueError` (`Path.relative_to`).
 
@@ -82,8 +86,8 @@ Text-ish detection: known source suffixes, names like `Makefile` / `Dockerfile` 
 
 ### Intended patterns
 
-1. Narrow then spawn — grep / glob → `repo.explore` / `rlm_query` per file. `repo.ask` only for a handful of lines.
-2. Map over a module — `llm_query_batched` on each file with the same question.
+1. Narrow then classify — grep / glob → `file_text` + `measure_ast` / regex in this REPL. `plan_reads` on the spans you care about.
+2. Map leftover slices — `llm_query_batched` (or `repo.ask`) on `route=="fit"` functions code cannot decide. Spawn `n_child` children only for oversized spans, or split them into `n_chunks` leaves.
 3. Follow edges — find a definition, grep for callers.
 4. Aggregate with code over `repo.files()`, not by stuffing the repo into chat.
 
@@ -106,7 +110,7 @@ Load a directory (or a single file) as `corpus`.
 ```
 Corpus: N documents.
 Bound as `corpus` and `catalog` (list of id/title/path/n_chars).
-Use corpus.search, corpus.get, corpus.slice, corpus.ask. Do not print full documents.
+Use corpus.search, corpus.get, corpus.measure, corpus.ask. Do not print full documents. Explore only if plan says route is child.
 Catalog preview:
   doc-0001: 'Title'  path=paper_a.md  n_chars=1234
   ...
@@ -141,6 +145,8 @@ If `pypdf` is missing, PDFs are skipped. Sidecar `.pdf.rlm.txt` files are gitign
 corpus.search(pattern: str) -> list[SearchHit]   # doc_id, line_no, snippet[:400]
 corpus.get(id: str) -> Document                  # id, path, title, text, n_chars
 corpus.slice(id: str, start: int, end: int) -> str   # Python character slice
+corpus.measure(doc_id: str, start: int | None = None, end: int | None = None) -> dict
+corpus.plan(spans: list | dict | str) -> dict
 corpus.ask(doc_id: str, question: str, start: int | None = None, end: int | None = None) -> str
 corpus.explore(question: str) -> str
 ```
@@ -150,7 +156,7 @@ corpus.explore(question: str) -> str
 ### Intended patterns
 
 1. Filter with regex / keywords from the query.
-2. Spawn `corpus.explore` / `rlm_query` (or `rlm_query_batched`) per remaining document.
+2. `corpus.measure` / `corpus.plan` remaining docs. `corpus.ask` for `route=="fit"` spans; `explore` only if `n_child > 0`.
 3. Reduce in the root (or a second-stage `rlm_query`) over claim objects.
 4. Cite from structured records `{doc_id, span, claim}` assembled in a variable.
 5. Ignore distractors that do not bear on the query.

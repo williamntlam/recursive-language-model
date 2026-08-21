@@ -15,7 +15,7 @@ from rlm.errors import BudgetExhaustedError, StartupError
 from rlm.ipc import read_msg, write_msg
 from rlm.repl_ns import DEFAULT_CELL_CPU_TIMEOUT_S, SubcallHandler
 
-IMAGE_TAG = "rlm-repl:0.1.11"
+IMAGE_TAG = "rlm-repl:0.1.13"
 
 # Peer closed the LM socket (cell timed out, container died, or host execute aborted).
 _PEER_GONE = (BrokenPipeError, ConnectionError, ConnectionResetError)

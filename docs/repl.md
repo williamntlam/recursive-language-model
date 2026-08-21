@@ -26,6 +26,9 @@ llm_query(prompt: str, model: str | None = None) -> str
 llm_query_batched(prompts: list[str], model: str | None = None) -> list[str]
 rlm_query(prompt: str, model: str | None = None) -> str
 rlm_query_batched(prompts: list[str] | list[dict], model: str | None = None) -> list[str]
+measure(text: str) -> dict
+measure_ast(source: str) -> list[dict]
+plan_reads(spans) -> dict
 SHOW_VARS() -> str
 FINAL(text) -> str
 FINAL_VAR(name: str) -> str
@@ -37,7 +40,7 @@ Batch helpers are **index-aligned** and **per-item failure tolerant**: one faile
 
 `SHOW_VARS()` lists names with a size hint (`str n_chars=…`, `list len=…`) without dumping values.
 
-`repo.ask(path, question, start=None, end=None)` and `corpus.ask(...)` read a slice: a tight span goes to `llm_query`, a larger read spawns `rlm_query`. `repo.explore(question)` / `corpus.explore(question)` always spawn a child RLM that **inherits the same repo or corpus**. Prefer `explore` over printing `repo.read`.
+`repo.ask(path, question, start=None, end=None)` and `corpus.ask(...)` read a slice: under ~24k chars goes to `llm_query`; a larger read spawns `rlm_query`. `repo.measure` / `measure_ast` / `plan_reads` size spans (`n_chars`, `n_tokens`, `route`) without returning bodies. `n_child` is how many oversized spans need a child (or split into `n_chunks` leaves). `repo.explore` / `corpus.explore` always spawn a child RLM that **inherits the same repo or corpus**. Prefer `file_text` + `ast` / `ask` over `explore` unless `n_child > 0`.
 
 A cell's **last expression** is displayed like a notebook (compact repr). `FINAL` / `FINAL_VAR` as the last expression are not displayed. `print` of a large string is truncated in the container before it reaches the host.
 
@@ -57,7 +60,7 @@ Any of these ends the loop and becomes `Completion.response`:
 
 These are snapshotted at init and **restored after every cell**, so the model cannot clobber them:
 
-`context`, `context_0`, `query`, `llm_query`, `llm_query_batched`, `rlm_query`, `rlm_query_batched`, `SHOW_VARS`, `FINAL`, `FINAL_VAR`, `answer`, `repo`, `corpus`, `catalog`, `manifest`
+`context`, `context_0`, `query`, `llm_query`, `llm_query_batched`, `rlm_query`, `rlm_query_batched`, `measure`, `measure_ast`, `plan_reads`, `SHOW_VARS`, `FINAL`, `FINAL_VAR`, `answer`, `repo`, `corpus`, `catalog`, `manifest`
 
 User-created names (`findings`, `hits`, …) persist.
 
@@ -95,7 +98,7 @@ Sockets (unix, under a host temp dir mounted at `/ipc`):
 
 Init payload: `query`, `mode` (`string` / `repo` / `research`), `max_stdout_chars`, `cell_timeout_s`. The container binds workspace objects, then ACKs.
 
-Image: `rlm-repl:0.1.11`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
+Image: `rlm-repl:0.1.13`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
 
 ## Isolation recap
 

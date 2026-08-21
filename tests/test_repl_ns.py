@@ -87,7 +87,18 @@ def test_pause_alarm_restores_remaining():
         signal.setitimer(signal.ITIMER_REAL, 0)
 
 
-def test_ast_import_is_allowed():
+def test_measure_ast_is_bound():
+    ns, snap = _ns()
+    obs = run_cell(
+        ns,
+        "src = 'def forward(self, x):\\n    return x\\n'\n"
+        "rows = measure_ast(src)\n"
+        "plan = plan_reads([r for r in rows if r['name']=='forward'])\n"
+        "plan['n_child'], plan['n_fit']\n",
+        snap,
+    )
+    assert obs.error is None
+    assert "(0, 1)" in (obs.stdout or "")
     ns, snap = _ns()
     obs = run_cell(ns, "import ast\ntree = ast.parse('x = 1')\nlen(tree.body)\n", snap)
     assert obs.error is None

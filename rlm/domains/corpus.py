@@ -8,7 +8,7 @@ from dataclasses import dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 
-from rlm.core.history import route_read_subcall
+from rlm.core.history import ASK_LEAF_CHARS, measure_text, plan_reads, route_read_subcall
 from rlm.core.types import RecordAccess
 
 SKIP_DIR_NAMES = frozenset({".git", ".rlm", "__pycache__", ".venv", "venv"})
@@ -180,6 +180,50 @@ class Corpus:
             loc = f"{doc_id}[{s}:{e}] ({doc.path})"
         return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
 
+    def measure(
+        self,
+        doc_id: str,
+        start: int | None = None,
+        end: int | None = None,
+    ) -> dict:
+        """n_chars / n_tokens / route for a document slice. Does not return the text."""
+        doc = self.get(doc_id)
+        if start is None and end is None:
+            text = doc.text
+        else:
+            s = 0 if start is None else start
+            e = len(doc.text) if end is None else end
+            text = doc.text[s:e]
+        row = measure_text(text, leaf_chars=ASK_LEAF_CHARS)
+        row["doc_id"] = doc_id
+        row["path"] = doc.path
+        if start is not None:
+            row["start"] = start
+        if end is not None:
+            row["end"] = end
+        return row
+
+    def plan(self, spans: list | dict | str) -> dict:
+        """n_fit / n_child / n_chunks for document spans. Drops bodies."""
+        seq: list
+        if isinstance(spans, list):
+            seq = spans
+        else:
+            seq = [spans]
+        rows: list[dict] = []
+        for item in seq:
+            if isinstance(item, str):
+                rows.append(self.measure(item))
+                continue
+            if not isinstance(item, dict):
+                continue
+            doc_id = item.get("doc_id") or item.get("id")
+            if not doc_id:
+                continue
+            row = self.measure(doc_id, item.get("start"), item.get("end"))
+            rows.append(row)
+        return plan_reads(rows)
+
     def explore(self, question: str) -> str:
         """Spawn a child RLM with the same corpus."""
         fn = self._rlm_fn
@@ -202,7 +246,8 @@ def corpus_manifest(corpus: Corpus, preview: int = 12) -> str:
     lines = [
         f"Corpus: {len(rows)} documents.",
         "Bound as `corpus` and `catalog` (list of id/title/path/n_chars).",
-        "Use corpus.search, corpus.explore, corpus.ask. Do not print full documents.",
+        "Use corpus.search, corpus.get, corpus.measure, corpus.ask. Do not print full documents. "
+        "Explore only if plan says route is child.",
         "Catalog preview:",
     ]
     for row in rows[:preview]:

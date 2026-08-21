@@ -12,7 +12,14 @@ from collections.abc import Callable, Iterator
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
 from typing import Any
 
-from rlm.core.history import DISPLAY_MAX_CHARS, compact_repr, sha256_text
+from rlm.core.history import (
+    DISPLAY_MAX_CHARS,
+    compact_repr,
+    measure_ast,
+    measure_text,
+    plan_reads,
+    sha256_text,
+)
 from rlm.core.types import Observation
 
 # Fallback if the init payload omits cell_timeout_s (this file is copied into
@@ -42,6 +49,9 @@ RESERVED_NAMES = (
     "llm_query_batched",
     "rlm_query",
     "rlm_query_batched",
+    "measure",
+    "measure_ast",
+    "plan_reads",
     "SHOW_VARS",
     "FINAL",
     "FINAL_VAR",
@@ -237,6 +247,9 @@ def create_namespace(
     ns["llm_query_batched"] = llm_query_batched
     ns["rlm_query"] = rlm_query
     ns["rlm_query_batched"] = rlm_query_batched
+    ns["measure"] = measure_text
+    ns["measure_ast"] = measure_ast
+    ns["plan_reads"] = plan_reads
     ns["SHOW_VARS"] = SHOW_VARS
     ns["FINAL"] = FINAL
     ns["FINAL_VAR"] = FINAL_VAR
@@ -294,7 +307,7 @@ def _missing_final_var(name: str, ns: dict[str, Any]) -> str:
     return (
         f"{name!r} is not defined. Bound user names: {listing}. "
         'Assign the answer, then FINAL_VAR("that_name"). '
-        "Do not invent names. Peek, then spawn repo.explore / rlm_query_batched. "
+        "Do not invent names. Peek with grep/ast; llm_query a tight slice if needed."
         "SHOW_VARS() lists what exists."
     )
 

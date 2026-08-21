@@ -9,7 +9,7 @@ from dataclasses import dataclass
 from fnmatch import fnmatch
 from pathlib import Path
 
-from rlm.core.history import route_read_subcall
+from rlm.core.history import ASK_LEAF_CHARS, measure_text, plan_reads, route_read_subcall
 from rlm.core.types import RecordAccess
 
 DEFAULT_IGNORE_DIR_NAMES = frozenset(
@@ -352,8 +352,49 @@ class Repo:
             loc = f"{path}:{start or 1}-{end or 'end'}"
         return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
 
+    def measure(
+        self,
+        path: str,
+        start: int | str | None = None,
+        end: int | str | None = None,
+    ) -> dict:
+        """n_chars / n_tokens / route for a span. Does not return the body."""
+        text = self.read(path, start, end)
+        line_offset = 0 if start is None else max(0, _coerce_int(start, "start") - 1)
+        row = measure_text(text, leaf_chars=ASK_LEAF_CHARS, line_offset=line_offset)
+        row["path"] = path
+        if start is not None:
+            row["start"] = _coerce_int(start, "start")
+        if end is not None:
+            row["end"] = _coerce_int(end, "end")
+        return row
+
+    def plan(self, spans: list | dict | str) -> dict:
+        """n_fit / n_child / n_chunks for path spans. Reads files; drops bodies."""
+        seq: list
+        if isinstance(spans, list):
+            seq = spans
+        else:
+            seq = [spans]
+        rows: list[dict] = []
+        for item in seq:
+            if isinstance(item, str):
+                rows.append(self.measure(item))
+                continue
+            if not isinstance(item, dict):
+                continue
+            path = item.get("path") or item.get("file")
+            if not path:
+                continue
+            row = self.measure(path, item.get("start"), item.get("end"))
+            for key in ("name", "qualname", "kind"):
+                if key in item:
+                    row[key] = item[key]
+            rows.append(row)
+        return plan_reads(rows)
+
     def explore(self, question: str) -> str:
-        """Spawn a child RLM with the same repo. Prefer this over reading files here."""
+        """Spawn a child RLM with the same repo. Use only if ast/ask is not enough."""
         fn = self._rlm_fn
         if fn is None:
             raise RuntimeError(
@@ -417,9 +458,9 @@ def repo_manifest(repo: Repo) -> str:
         f"Repository: {repo.root}\n"
         f"Files: {len(files):,}  |  Text-ish bytes: {total}  |  Git HEAD: {head}\n"
         f"Top-level:\n{top}\n"
-        "Use repo.tree(), repo.grep(), repo.explore(question), "
-        "repo.ask(path, question, start, end).\n"
-        "Do not print entire files. Spawn a child RLM per file; llm_query only tight slices.\n"
+        "Use repo.tree(), repo.grep(), repo.file_text + ast, repo.measure, repo.plan, repo.ask.\n"
+        "Do not print entire files. Classify with code here; llm_query tight slices; "
+        "child RLM only if plan_reads / repo.plan says route is child.\n"
     )
 
 
