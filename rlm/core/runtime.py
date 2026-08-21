@@ -19,6 +19,7 @@ from rlm.core.history import (
     compact_parent_hist,
     format_observation,
     observation_nudge,
+    repl_error_hint,
     sha256_text,
 )
 from rlm.core.parse import extract_repl_code
@@ -38,6 +39,7 @@ CHILD_QUERY = (
     "Execute the task described in the `context` variable. "
     "Use the REPL. Finish with FINAL_VAR or FINAL."
 )
+CELL_LOG_MAX_CHARS = 100_000
 
 
 class RuntimeHandler(SubcallHandler):
@@ -206,17 +208,23 @@ class Runtime:
                     print(code, file=sys.stderr)
                 obs = env.execute(code)
                 formatted = format_observation(obs, self.config.max_observation_chars)
+                hint = repl_error_hint(code, obs.error)
+                if hint:
+                    formatted = formatted.rstrip() + "\n" + hint + "\n"
                 probe = list(hist) + [Message("user", formatted)]
                 nudge = observation_nudge(count_tokens(probe))
                 if nudge:
                     formatted = formatted + "\n\n" + nudge
+                stderr_text = (obs.stderr or "")[:4000]
+                if hint:
+                    stderr_text = (stderr_text.rstrip() + "\n" + hint)[:4000]
                 self.logger.event(
                     kind="repl",
                     iteration=i,
                     depth=self.depth,
-                    code=code[:4000],
+                    code=code[:CELL_LOG_MAX_CHARS],
                     stdout=formatted[:4000],
-                    stderr=(obs.stderr or "")[:4000],
+                    stderr=stderr_text,
                     error=obs.error,
                     prompt_tokens=n_tok,
                     instruction_count=n_inst,

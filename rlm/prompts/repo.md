@@ -16,6 +16,6 @@ Strategy:
 1. Grep or glob to get paths (print counts and a few hits).
 2. Spawn `repo.explore` / `rlm_query` per interesting file or module. The child has the same `repo`.
 3. Use `repo.ask` only for a handful of lines you have already isolated.
-4. Map `rlm_query_batched` over files in a module with the same question.
+4. Map `rlm_query_batched` over files: a list of strings, or `{"question": q, "path": p}` dicts.
 5. Reduce child answers into a name you assigned, then `FINAL_VAR("that_name")`. Never dump the repository into chat.
 6. Cite answers with `path:start-end`.

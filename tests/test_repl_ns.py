@@ -113,6 +113,31 @@ def test_rlm_query_batched_rejects_lambdas():
     assert "Error:" in (obs.stdout or "")
 
 
+def test_rlm_query_batched_accepts_question_path_dicts():
+    class Cap(Quiet):
+        def __init__(self):
+            self.seen: list[str] = []
+
+        def rlm_query_batched(self, prompts, model=None):
+            self.seen.extend(prompts)
+            return ["CHILD"] * len(prompts)
+
+    cap = Cap()
+    ns = create_namespace({}, cap)
+    snap = snapshot_reserved(ns)
+    obs = run_cell(
+        ns,
+        "out = rlm_query_batched([{'question': 'Analyze forward()', 'path': 'src/foo.py'}])\n"
+        "print(out)\n",
+        snap,
+    )
+    assert obs.error is None
+    assert len(cap.seen) == 1
+    assert "src/foo.py" in cap.seen[0]
+    assert "Analyze forward()" in cap.seen[0]
+    assert not cap.seen[0].startswith("Error:")
+
+
 def test_final_var_accepts_bare_name_after_assign():
     ns, snap = _ns()
     obs = run_cell(ns, "result = 'ok'\nFINAL_VAR(result)\n", snap)

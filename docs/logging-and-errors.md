@@ -42,7 +42,7 @@ The raw query string is **not** stored in `meta.json` (only its length and sha25
 | `kind` | When |
 |---|---|
 | `root_lm` | Parent (or child RLM root) completion: model, prompt_tokens, instruction_count, completion_tokens, latency_s, cost_usd, iteration, depth |
-| `repl` | Cell executed: code[:4000], stdout[:4000], stderr[:4000], error, tokens, instruction_count |
+| `repl` | Cell executed: full code (capped at 100k chars), stdout[:4000], stderr[:4000], error, tokens, instruction_count |
 | `parse_error` | No `repl` fence |
 | `llm_query` | Leaf call |
 | `rlm_query` | Child finished: `child_depth`, `answer_n_chars` |

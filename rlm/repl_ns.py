@@ -135,8 +135,29 @@ def _require_prompt_str(who: str, prompt: Any) -> str:
     kind = type(prompt).__name__
     return (
         f"Error: {who} requires a str, got {kind}. "
-        "Build the question with an f-string; do not pass a function or lambda."
+        "Build the question with an f-string; do not pass a function or lambda. "
+        'For a file, pass {"question": q, "path": p} to rlm_query / rlm_query_batched.'
     )
+
+
+def _coerce_rlm_prompt(who: str, prompt: Any) -> str:
+    """Accept a str, or {question, path} / {prompt, file} dict, for child RLMs."""
+    if isinstance(prompt, str):
+        return prompt
+    if isinstance(prompt, dict):
+        path = prompt.get("path") or prompt.get("file")
+        question = prompt.get("question") or prompt.get("prompt") or prompt.get("q")
+        have_q = isinstance(question, str) and bool(question.strip())
+        have_path = isinstance(path, str) and bool(path.strip())
+        if have_q and have_path:
+            return (
+                f"{question}\n\nTarget: {path}. "
+                "The same repo/corpus is bound in your REPL. Read that file or document there; "
+                "do not print the body. llm_query tight slices. FINAL a short cited answer."
+            )
+        if have_q:
+            return question
+    return _require_prompt_str(who, prompt)
 
 
 def create_namespace(
@@ -201,13 +222,13 @@ def create_namespace(
         return handler.llm_query_batched(texts, model=model)
 
     def rlm_query(prompt: str, model: str | None = None) -> str:
-        text = _require_prompt_str("rlm_query", prompt)
+        text = _coerce_rlm_prompt("rlm_query", prompt)
         if text.startswith("Error:"):
             return text
         return handler.rlm_query(text, model=model)
 
     def rlm_query_batched(prompts: list[str], model: str | None = None) -> list[str]:
-        texts = [_require_prompt_str("rlm_query_batched", p) for p in prompts]
+        texts = [_coerce_rlm_prompt("rlm_query_batched", p) for p in prompts]
         if any(t.startswith("Error:") for t in texts):
             return texts
         return handler.rlm_query_batched(texts, model=model)

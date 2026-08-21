@@ -75,6 +75,40 @@ def test_parser_accepts_unclosed_repl_fence():
     assert "repo.grep" in code
 
 
+def test_parser_accepts_bare_repl_after_prose():
+    text = (
+        "I'll fan out per file. I won't print file bodies.\n"
+        "\n"
+        "First, find candidate files.\n"
+        "\n"
+        "repl\n"
+        "model_files = [f['path'] for f in repo.files()]\n"
+        "print(len(model_files))\n"
+    )
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "model_files" in code
+    assert "I'll fan out" not in code
+
+
+def test_parser_unglues_trailing_repl_and_keeps_both_cells():
+    text = (
+        "I'll start by listing files.\n"
+        "\n"
+        "repl\n"
+        "model_files = repo.glob('**/*.py')\n"
+        'print(len(model_files), "model .py files (total candidates)")repl\n'
+        "hits = repo.grep(r'class', glob='**/*.py')\n"
+        "print(len(hits))\n"
+    )
+    code = extract_repl_code(text)
+    assert code is not None
+    assert "model_files" in code
+    assert "hits = repo.grep" in code
+    assert not any(line.strip() == "repl" for line in code.splitlines())
+    assert '")repl' not in code
+
+
 def test_parser_accepts_bare_repl_header():
     text = (
         "repl\n"
@@ -106,6 +140,18 @@ print(len(lambda_hits))
 
 def test_parser_skips_json_fence():
     assert extract_repl_code('```json\n{"a": 1}\n```') is None
+
+
+def test_repl_error_hint_for_str_format():
+    from rlm.core.history import repl_error_hint
+
+    hint = repl_error_hint(
+        'q = ("{\\n  \\"classes\\": []}").format(path=p)\n',
+        'KeyError: \'\\n  "classes"\'',
+    )
+    assert hint is not None
+    assert "f-string" in hint
+    assert repl_error_hint("x = 1", None) is None
 
 
 def test_parser_returns_none_without_repl_fence():

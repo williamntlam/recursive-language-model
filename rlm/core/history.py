@@ -88,6 +88,18 @@ def _compact(value: Any, *, max_chars: int, depth: int) -> str:
     return text
 
 
+def repl_error_hint(code: str, error: str | None) -> str | None:
+    """Short recovery hint for common model-written cell failures."""
+    if not error:
+        return None
+    if "KeyError" in error and ".format(" in (code or ""):
+        return (
+            "Hint: str.format() treats `{` as a replacement field. "
+            "Use an f-string, or double the braces (`{{` `}}`) in the template."
+        )
+    return None
+
+
 def format_observation(obs: Observation, max_chars: int) -> str:
     parts: list[str] = []
     stdout = obs.stdout or ""

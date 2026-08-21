@@ -30,7 +30,7 @@ uv sync --group dev --extra pdf
 Build the REPL image on first real completion, or ahead of time:
 
 ```bash
-docker build -t rlm-repl:0.1.7 -f docker/Dockerfile .
+docker build -t rlm-repl:0.1.8 -f docker/Dockerfile .
 ```
 
 The runtime builds this tag automatically if it is missing and Docker is reachable.

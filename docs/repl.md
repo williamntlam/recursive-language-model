@@ -17,7 +17,7 @@ FINAL_VAR("result")
 ```
 ````
 
-The parser (`rlm.core.parse.extract_repl_code`) takes the **last** `repl` fence (case-insensitive), including an **unclosed** fence (body until end of the turn). If none, it falls back to ````python` / ````py`, then an unlabeled ```` fence. gpt-5 often writes a bare `repl` heading with no backticks; that is treated as a cell too. JSON/markdown/shell fences are ignored. If nothing executable is found, the runtime logs a preview, appends a reminder, and counts a consecutive error.
+The parser (`rlm.core.parse.extract_repl_code`) takes the **last** `repl` fence (case-insensitive), including an **unclosed** fence (body until end of the turn). If none, it falls back to ````python` / ````py`, then an unlabeled ```` fence. gpt-5 often writes a bare `repl` heading with no backticks, including after a prose preamble or glued to the previous line (`")repl`). That is treated as a cell too. Multiple bare `repl` headings in one turn are joined (intermediate heading lines are stripped). JSON/markdown/shell fences are ignored. If nothing executable is found, the runtime logs a preview, appends a reminder, and counts a consecutive error.
 
 ## Builtins always injected
 
@@ -25,7 +25,7 @@ The parser (`rlm.core.parse.extract_repl_code`) takes the **last** `repl` fence 
 llm_query(prompt: str, model: str | None = None) -> str
 llm_query_batched(prompts: list[str], model: str | None = None) -> list[str]
 rlm_query(prompt: str, model: str | None = None) -> str
-rlm_query_batched(prompts: list[str], model: str | None = None) -> list[str]
+rlm_query_batched(prompts: list[str] | list[dict], model: str | None = None) -> list[str]
 SHOW_VARS() -> str
 FINAL(text) -> str
 FINAL_VAR(name: str) -> str
@@ -33,7 +33,7 @@ FINAL_VAR(name: str) -> str
 
 Each `prompt` is a full LM payload and is subject to the [prompt guard](runtime.md): **< 100k tokens** and **≤ 150 instructions**. The runtime prepends a short leaf system prompt (`rlm/prompts/leaf.md`). If the model concatenates a huge slice into `llm_query`, the call returns an error string and does not hit the API.
 
-Batch helpers are **index-aligned** and **per-item failure tolerant**: one failed leaf (including a prompt-budget failure) returns an error string in that slot; others succeed. Concurrency is capped by `max_concurrent_subcalls` (default 8).
+Batch helpers are **index-aligned** and **per-item failure tolerant**: one failed leaf (including a prompt-budget failure) returns an error string in that slot; others succeed. Concurrency is capped by `max_concurrent_subcalls` (default 8). `rlm_query` / `rlm_query_batched` also accept `{"question": q, "path": p}` dicts and turn them into a child prompt that names that file.
 
 `SHOW_VARS()` lists names with a size hint (`str n_chars=…`, `list len=…`) without dumping values.
 
@@ -97,7 +97,7 @@ Sockets (unix, under a host temp dir mounted at `/ipc`):
 
 Init payload: `query`, `mode` (`string` / `repo` / `research`), `max_stdout_chars`, `cell_timeout_s`. The container binds workspace objects, then ACKs.
 
-Image: `rlm-repl:0.1.7`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
+Image: `rlm-repl:0.1.8`. Built from `docker/Dockerfile` on first use if missing. Copies a **subset** of the package into the image (`ipc`, `repl_ns`, `errors`, `core/types`, `core/history`, `domains/repo`, `domains/corpus`, `repl_server.py`) — not the OpenAI client or runtime loop.
 
 ## Isolation recap
 

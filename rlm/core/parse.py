@@ -32,6 +32,11 @@ _FENCE_LEFTOVER = re.compile(
     r"^[ \t]*(?:```)?[ \t]*(?:repl|python|py)[ \t]*:?[ \t]*(?:```)?[ \t]*$",
     re.IGNORECASE,
 )
+# `print(...)")repl` — heading glued to the previous statement.
+_GLUED_REPL = re.compile(
+    r"^(?P<prefix>.*[^A-Za-z0-9_])(?P<header>repl)[ \t]*:?[ \t]*$",
+    re.IGNORECASE,
+)
 
 
 def extract_repl_code(text: str) -> str | None:
@@ -70,13 +75,35 @@ def _fenced_cell(body: str) -> str | None:
     return unlabeled
 
 
+def _is_bare_header(line: str) -> bool:
+    header = line.strip().strip("`").strip().lower().rstrip(":")
+    return header in _BARE_HEADERS
+
+
+def _unglue_repl_headers(body: str) -> str:
+    lines: list[str] = []
+    for line in body.split("\n"):
+        match = _GLUED_REPL.match(line)
+        if match and match.group("prefix").strip():
+            lines.append(match.group("prefix"))
+            lines.append("repl")
+        else:
+            lines.append(line)
+    return "\n".join(lines)
+
+
 def _bare_repl_cell(body: str) -> str | None:
     """gpt-5 often writes `repl` as a heading, not a markdown fence."""
-    stripped = body.strip()
-    if not stripped or "\n" not in stripped:
+    body = _unglue_repl_headers(body)
+    lines = body.split("\n")
+    start: int | None = None
+    for i, line in enumerate(lines):
+        if _is_bare_header(line):
+            start = i
+            break
+    if start is None:
         return None
-    first, _, rest = stripped.partition("\n")
-    header = first.strip().strip("`").strip().lower().rstrip(":")
-    if header in _BARE_HEADERS and rest.strip():
-        return rest
-    return None
+    rest = "\n".join(lines[start + 1 :])
+    if not rest.strip():
+        return None
+    return rest
