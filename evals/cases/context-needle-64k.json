@@ -1,0 +1,9 @@
+{
+  "id": "context-needle-64k-v1",
+  "kind": "synthetic_needle",
+  "target_tokens": 64000,
+  "needle_position": 0.63,
+  "record_id": "atlas-64k-29",
+  "secret": "violet-harbor-186",
+  "query": "Search the bound context for the uniquely marked audit record. Return its record id and recovery value, and include the exact marker text as evidence. Do not guess."
+}

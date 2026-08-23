@@ -13,6 +13,7 @@ build/
 .coverage
 htmlcov/
 .rlm/
+evals/results/
 *.pdf.rlm.txt
 .DS_Store
 

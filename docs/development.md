@@ -23,7 +23,7 @@ recursive-language-model/
 ├── examples/
 ├── codebases/                     # README tracked; clones gitignored
 ├── corpora/                       # README tracked; document dumps gitignored
-├── evals/                         # planned; not a v0 blocker
+├── evals/                         # opt-in LLM-judge and future evaluations
 └── .gitignore                     # .env, .rlm/, /codebases/*, /corpora/*, caches
 ```
 
@@ -97,7 +97,17 @@ Do not grow the generic rule list without removing something else. The 150-instr
 
 ## Evals
 
-[`evals/README.md`](../evals/README.md) lists planned evals (NIAH, mini-OOLONG, fixture Q&A, history invariant, ceiling checks). They are **not** a v0 blocker. Add them after history policy, prompt ceilings, and both domains are solid.
+[`evals/README.md`](../evals/README.md) documents the opt-in evaluation
+harnesses. The first two are a source-grounded Transformers census and a
+synthetic retrieval ladder at 8k, 64k, 200k, and 500k tokens. These commands
+can use Docker and OpenAI API budget, so they are deliberately excluded from
+pytest and must be run explicitly.
+
+The judge results are written to gitignored `evals/results/`. For rubric,
+evidence, and expansion guidance, see
+[`docs/transformers-judge.md`](transformers-judge.md). Future NIAH,
+mini-OOLONG, fixture Q&A, history-invariant, and prompt-ceiling cases remain
+useful additions.
 
 ## Design source of truth
 

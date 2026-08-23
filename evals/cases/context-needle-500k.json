@@ -1,0 +1,9 @@
+{
+  "id": "context-needle-500k-v1",
+  "kind": "synthetic_needle",
+  "target_tokens": 500000,
+  "needle_position": 0.83,
+  "record_id": "atlas-500k-61",
+  "secret": "indigo-orchard-903",
+  "query": "Search the bound context for the uniquely marked audit record. Return its record id and recovery value, and include the exact marker text as evidence. Do not guess."
+}

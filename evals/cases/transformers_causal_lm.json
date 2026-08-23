@@ -1,0 +1,6 @@
+{
+  "id": "transformers-causal-lm-forward-census-v1",
+  "repository": "codebases/transformers",
+  "query": "Under src/transformers/models, for every class named *ForCausalLM or *ForConditionalGeneration: find forward() even if inherited. Classify loss-in-forward vs shift-in-forward vs loss_function helper. Return counts, exceptions only, and GenerationMixin classes that do not match those names. Use grep + ast. llm_query only on unclear bodies. Do not spawn one child per file.",
+  "criteria_file": "evals/criteria/transformers_causal_lm.md"
+}

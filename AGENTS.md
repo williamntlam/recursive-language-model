@@ -30,6 +30,7 @@ files, or every skill merely to orient yourself.
 | Prompt, prompt catalog, token guard, or history-policy change | `skills/prompt-safety/SKILL.md` |
 | CLI or TOML/YAML configuration change | `skills/cli-and-config/SKILL.md` |
 | Docker REPL image, namespace, or host-container boundary change | `skills/docker-repl/SKILL.md` |
+| Add or modify an LLM-as-judge evaluation, rubric, case, or long-context benchmark | `skills/evaluation/SKILL.md` |
 | Tests, regression diagnosis, or validation | `skills/testing/SKILL.md` |
 | Trajectory reports, logging, or error presentation | `skills/observability/SKILL.md` |
 | Documentation or examples only | Inspect the relevant document directly. |
