@@ -189,6 +189,7 @@ Full docs live in [`docs/`](docs/README.md):
 | Loop, hist, prompt guard, routing | [Runtime](docs/runtime.md) |
 | Trajectories, `error.txt` | [Logging and errors](docs/logging-and-errors.md) |
 | Tests, layout | [Development](docs/development.md) |
+| Harbor agent tasks, suites, and legacy judges | [Evaluations](docs/evaluations.md) |
 | Package map | [Module reference](docs/module-reference.md) |
 
 ## When not to use this
@@ -205,6 +206,10 @@ uv run pytest
 ```
 
 Docker tests are skipped when the daemon is absent (`pytest -m docker` to select them).
+
+For the read-only Harbor agent benchmark task and its deterministic verifier
+checks, see [Evaluations](docs/evaluations.md). Repository changes are tracked
+in [CHANGELOG.md](CHANGELOG.md).
 
 ## License
 

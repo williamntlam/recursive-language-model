@@ -54,3 +54,5 @@ Before every GitHub push that changes this repository, update
 the relevant Keep a Changelog category and prefix it with the local
 `YYYY-MM-DD HH:MM TZ` timestamp. Do not rewrite prior entries; move the
 Unreleased entries into a dated/versioned section only when preparing a release.
+The version-controlled [pre-push hook](.githooks/pre-push) enforces that the
+outgoing commits include a `CHANGELOG.md` change.

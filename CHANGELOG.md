@@ -11,6 +11,8 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-24 17:16 EDT** — A version-controlled pre-push hook that blocks
+  outgoing commits without a `CHANGELOG.md` update.
 - **2026-08-24 17:14 EDT** — A Harbor-compatible, read-only source-grounding task dataset at
   `evals/harbor/`, including the `rlm-reading-contracts` task.
 - **2026-08-24 17:14 EDT** — Frozen `lite` and `full` Harbor suite manifests plus deterministic task and
@@ -19,6 +21,8 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Changed
 
+- **2026-08-24 17:17 EDT** — Updated the README and developer documentation for
+  Harbor tasks, repeated trials, deterministic checks, and changelog hooks.
 - **2026-08-24 17:14 EDT** — Documented Harbor tasks as the supported agent-benchmark entry point.
 - **2026-08-24 17:14 EDT** — Reclassified the existing Python LLM-judge scripts as opt-in development
   utilities rather than the reported Harbor benchmark interface.

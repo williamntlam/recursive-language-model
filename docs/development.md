@@ -6,6 +6,9 @@
 recursive-language-model/
 ├── docs/                          # this documentation
 ├── .spec/001-initialize-repo/     # product spec (source of design decisions)
+├── .spec/003-harbor-readonly-evaluations/ # Harbor evaluation reference spec
+├── .githooks/                     # version-controlled repository hooks
+├── CHANGELOG.md                   # timestamped changes required before pushes
 ├── README.md
 ├── LICENSE                        # MIT
 ├── pyproject.toml                 # package recursive-language-model, script rlm
@@ -23,7 +26,7 @@ recursive-language-model/
 ├── examples/
 ├── codebases/                     # README tracked; clones gitignored
 ├── corpora/                       # README tracked; document dumps gitignored
-├── evals/                         # opt-in LLM-judge and future evaluations
+├── evals/                         # Harbor tasks and legacy opt-in LLM judges
 └── .gitignore                     # .env, .rlm/, /codebases/*, /corpora/*, caches
 ```
 
@@ -36,6 +39,7 @@ uv sync --group dev
 uv run pytest
 uv run ruff check rlm tests
 uv run rlm --help
+uv run pytest tests/test_harbor_tasks.py tests/capabilities
 ```
 
 Optional PDF extra: `uv sync --extra pdf`.
@@ -95,19 +99,41 @@ Keep prompts in `rlm/prompts/*.md` so they can be versioned without code changes
 
 Do not grow the generic rule list without removing something else. The 150-instruction ceiling is load-bearing.
 
-## Evals
+## Evaluations
 
-[`evals/README.md`](../evals/README.md) documents the opt-in evaluation
-harnesses. The first two are a source-grounded Transformers census and a
-synthetic retrieval ladder at 8k, 64k, 200k, and 500k tokens. These commands
-can use Docker and OpenAI API budget, so they are deliberately excluded from
-pytest and must be run explicitly.
+[Harbor tasks](evaluations.md) are the supported path for benchmarking an
+autonomous agent. The checked-in `rlm-reading-contracts` task is read-only:
+the agent inspects a source snapshot and writes an answer artifact, while the
+Harbor verifier awards a deterministic numeric reward. Install Harbor with
+`uv tool install harbor`; local runs need Docker and an agent adapter.
+
+`tests/test_harbor_tasks.py` and `tests/capabilities/` are the fast
+deterministic checks for that task dataset. They run in ordinary pytest and do
+not require Docker, an API key, or an agent.
+
+The source-grounded Transformers census and synthetic 8k–500k retrieval ladder
+remain legacy, opt-in RLM development utilities. These commands can use Docker
+and OpenAI API budget, so they are deliberately excluded from pytest and must
+be run explicitly.
 
 The judge results are written to gitignored `evals/results/`. For rubric,
 evidence, and expansion guidance, see
 [`docs/transformers-judge.md`](transformers-judge.md). Future NIAH,
 mini-OOLONG, fixture Q&A, history-invariant, and prompt-ceiling cases remain
 useful additions.
+
+## Change tracking and hooks
+
+Update [`CHANGELOG.md`](../CHANGELOG.md) before every GitHub push that changes
+the repository. Each Unreleased entry needs a local `YYYY-MM-DD HH:MM TZ`
+timestamp. `.githooks/pre-push` checks that the outgoing commits include a
+changelog update; this clone activates it with:
+
+```bash
+git config core.hooksPath .githooks
+```
+
+Use `git push --no-verify` only for an intentional emergency bypass.
 
 ## Design source of truth
 

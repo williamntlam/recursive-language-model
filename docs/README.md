@@ -21,6 +21,7 @@ Paper: Zhang, Kraska, Khattab, [*Recursive Language Models*](https://arxiv.org/a
 | [Runtime](runtime.md) | Iteration loop, history policy, prompt guard, leaf vs child routing, budgets |
 | [Logging and errors](logging-and-errors.md) | Trajectories, `error.txt`, parse errors, usage footer, exception map |
 | [Development](development.md) | Layout, tests, fixtures, evals |
+| [Evaluations](evaluations.md) | Harbor agent tasks, repeated trials, suites, capability checks, and legacy judges |
 | [Transformers judge eval](transformers-judge.md) | Source-grounded Transformers census, LLM judge, and long-context ladder |
 | [Module reference](module-reference.md) | Package map and important types |
 
