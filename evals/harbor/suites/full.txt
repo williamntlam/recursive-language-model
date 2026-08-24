@@ -1,0 +1,2 @@
+# Frozen release-gate Harbor task set. One task path per line.
+rlm-reading-contracts

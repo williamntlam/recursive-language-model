@@ -1,0 +1,2 @@
+# Frozen fast-iteration Harbor task subset. One task path per line.
+rlm-reading-contracts

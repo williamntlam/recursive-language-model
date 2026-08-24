@@ -1,5 +1,23 @@
 # Evaluation contracts
 
+## Harbor agent benchmark tasks
+
+The supported agent-benchmark entry point is `evals/harbor/`. Harbor tasks are
+versioned, self-contained directories with `task.toml`, `instruction.md`, an
+`environment/Dockerfile`, and `tests/test.sh`. The verifier reports its
+deterministic outcome through `/logs/verifier/reward.txt`.
+
+For source-reading work, the agent must run as a non-root user and receive the
+source tree read-only. The instruction names the permitted answer artifact;
+the verifier owns its expected facts and checks. Do not put source writes, host
+credentials, public-network access, test code, or answer keys in the agent
+environment.
+
+Keep `evals/harbor/suites/lite.txt` and `full.txt` frozen between benchmark
+revisions. Run multiple attempts for reported agent scores. Pair each Harbor
+integration task with fast deterministic tests that validate its layout and
+verifier behavior.
+
 ## Current suites
 
 - `transformers_causal_lm_judge.py` runs a source-grounded repository census.
@@ -9,6 +27,10 @@
   200k, and 500k `cl100k_base` tokens. Context is generated at run time and
   bound in the RLM REPL; it must not be inserted into the parent or judge
   prompt.
+
+These two scripts are legacy, opt-in RLM development utilities. They are not
+the Harbor agent-benchmark entry point and must not be presented as comparable
+Harbor scores.
 
 ## Required properties
 

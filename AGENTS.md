@@ -46,3 +46,11 @@ load a skill only when its additional context becomes relevant.
   to raise for convenience.
 - Prefer deterministic REPL/Python inspection over unnecessary model calls.
 - Make focused changes and run proportional validation.
+
+## Change log
+
+Before every GitHub push that changes this repository, update
+[`CHANGELOG.md`](CHANGELOG.md). Add a concise entry under **Unreleased** using
+the relevant Keep a Changelog category and prefix it with the local
+`YYYY-MM-DD HH:MM TZ` timestamp. Do not rewrite prior entries; move the
+Unreleased entries into a dated/versioned section only when preparing a release.

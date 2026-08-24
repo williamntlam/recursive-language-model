@@ -1,16 +1,25 @@
 # Evals
 
-Not a v0 blocker. After the product works (history policy, prompt ceilings, repo and research domains), add:
+The supported agent benchmark format is the local
+[Harbor task dataset](harbor/README.md). Each task is self-contained and has an
+agent environment, Markdown instruction, and `tests/test.sh` verifier. These
+are source-reading tasks: source is root-owned and read-only, while the agent
+writes only its requested answer artifact.
 
-- Synthetic needle-in-a-haystack over ~1M characters
-- Dense aggregation (mini-OOLONG style)
-- Fixture monorepo Q&A
-- Multi-document synthesis with distractors
-- History invariant: bound context never appears in parent `hist`
-- Prompt-token ceiling: no send with `prompt_tokens >= 100000`
-# Evals
+Run task-structure and deterministic capability checks during development:
 
-Not a v0 blocker. After the product works (history policy, prompt ceilings, repo and research domains), add:
+```bash
+uv run pytest tests/test_harbor_tasks.py tests/capabilities
+```
+
+Use the frozen `harbor/suites/lite.txt` list for fast iteration and
+`harbor/suites/full.txt` for release-gate runs. Use multiple Harbor trials for
+reported benchmark results, because agent execution is nondeterministic.
+
+## Legacy LLM judge utilities
+
+The scripts below remain opt-in development utilities. They do not define the
+Harbor benchmark entry point and should not be used for reported agent scores.
 
 - Synthetic needle-in-a-haystack over ~1M characters
 - Dense aggregation (mini-OOLONG style)
@@ -23,7 +32,7 @@ Not a v0 blocker. After the product works (history policy, prompt ceilings, repo
 
 Optional later: LongBench-v2 CodeQA, BrowseComp-Plus style corpora, if licensing allows.
 
-## Transformers LLM judge (first runnable eval)
+### Transformers LLM judge
 
 `transformers_causal_lm_judge.py` evaluates the local,
 gitignored `codebases/transformers` clone against the causal-LM `forward()`
@@ -48,7 +57,7 @@ Results are written to `evals/results/` by default, which is gitignored.
 See [`transformers-judge.md`](../docs/transformers-judge.md) for the evidence flow,
 best practices, limitations, and planned improvements.
 
-## Increasing-context needle ladder
+### Increasing-context needle ladder
 
 [`context_needle_judge.py`](context_needle_judge.py) is a synthetic,
 increasing-context companion benchmark. The checked-in cases generate local

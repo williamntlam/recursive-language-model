@@ -1,0 +1,18 @@
+version = "1.0"
+
+[metadata]
+author_name = "RLM maintainers"
+category = "codebase-reading"
+tags = ["read-only", "source-grounded", "repository-analysis"]
+
+[agent]
+timeout_sec = 300
+
+[verifier]
+timeout_sec = 60
+environment_mode = "shared"
+
+[environment]
+build_timeout_sec = 300
+cpus = 1
+memory_mb = 512
