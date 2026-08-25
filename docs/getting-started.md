@@ -32,7 +32,7 @@ uv sync --group dev --extra pdf
 Build the REPL image on first real completion, or ahead of time:
 
 ```bash
-docker build -t rlm-repl:0.1.13 -f docker/Dockerfile .
+docker build -t rlm-repl:0.1.14 -f docker/Dockerfile .
 ```
 
 The runtime builds this tag automatically if it is missing and Docker is reachable. Bump `IMAGE_TAG` in `rlm/environments/docker.py` when files copied into the image change (`repl_ns.py`, `history.py`, `domains/repo.py`, …).

@@ -10,6 +10,7 @@ from pathlib import Path
 from typing import Any
 
 from rlm.core.types import Usage
+from rlm.logging.trace import TRACE_SCHEMA_VERSION, TraceWriter, read_trace, summarize
 
 _SECRET = re.compile(r"sk-[A-Za-z0-9_\-]{8,}")
 
@@ -38,10 +39,20 @@ class TrajectoryLogger:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.dir / "events.jsonl"
         self.error_path = self.dir / "error.txt"
+        self.trace = TraceWriter(self.dir)
+        self.trace_capture = str(extra_meta.get("trace_capture") or "metadata")
+        self._artifact_bytes = 0
+        self._artifact_limit = 2_000_000
+        self._artifact_item_limit = 200_000
+        self.root_started = time.perf_counter()
+        self.root_span_id = self.trace.start("rlm.run", "run", parent_span_id=None, depth=0)
         meta = {
             "id": run_id,
             "query_sha256": extra_meta.get("query_sha256"),
             "query_n_chars": len(query),
+            "trace_schema_version": TRACE_SCHEMA_VERSION,
+            "trace_id": self.trace.trace_id,
+            "trace_capture": self.trace_capture,
             **{k: v for k, v in extra_meta.items() if k != "query"},
         }
         (self.dir / "meta.json").write_text(
@@ -57,6 +68,43 @@ class TrajectoryLogger:
             self._maybe_record_event_error(record)
         except OSError:
             pass
+
+    def capture_content(self, kind: str, text: str) -> str | None:
+        """Store an opt-in local artifact and return its opaque reference."""
+        if self.trace_capture != "content":
+            return None
+        raw = redact(text)
+        encoded = raw.encode("utf-8")
+        truncated = len(encoded) > self._artifact_item_limit
+        if truncated:
+            encoded = encoded[: self._artifact_item_limit]
+        if self._artifact_bytes + len(encoded) > self._artifact_limit:
+            return None
+        digest = __import__("hashlib").sha256(encoded).hexdigest()
+        artifacts = self.dir / "artifacts"
+        artifacts.mkdir(exist_ok=True)
+        path = artifacts / f"{digest}.txt"
+        if not path.exists():
+            path.write_bytes(encoded)
+        self._artifact_bytes += len(encoded)
+        manifest_path = artifacts / "manifest.json"
+        manifest: dict[str, Any] = {}
+        if manifest_path.exists():
+            try:
+                manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+            except (OSError, json.JSONDecodeError):
+                manifest = {}
+        manifest[digest] = {
+            "kind": kind,
+            "byte_length": len(encoded),
+            "sha256": digest,
+            "truncated": truncated,
+            "redacted": raw != text,
+        }
+        manifest_path.write_text(
+            json.dumps(manifest, indent=2, sort_keys=True) + "\n", encoding="utf-8"
+        )
+        return f"artifacts/{digest}.txt"
 
     def record_stderr(
         self,
@@ -124,7 +172,39 @@ class TrajectoryLogger:
             json.dumps(_safe(payload), indent=2, ensure_ascii=False) + "\n",
             encoding="utf-8",
         )
+        self.trace.end(
+            self.root_span_id,
+            "rlm.run",
+            "run",
+            depth=0,
+            status="ok",
+            started=self.root_started,
+            input_tokens=usage.prompt_tokens,
+            output_tokens=usage.completion_tokens,
+            cost_usd=usage.cost_usd,
+        )
+        self.write_trace_summary(complete=True)
         self.write_html()
+
+    def abort_trace(self, error: BaseException, *, depth: int = 0) -> None:
+        # Do not close the root span: a missing end is the durable interruption signal.
+        self.trace.event(
+            "run.abort",
+            "runtime",
+            parent_span_id=self.root_span_id,
+            depth=depth,
+            error_type=type(error).__name__,
+        )
+        self.write_trace_summary(complete=False)
+
+    def write_trace_summary(self, *, complete: bool) -> None:
+        try:
+            payload = summarize(read_trace(self.trace.path), complete=complete)
+            (self.dir / "trace-summary.json").write_text(
+                json.dumps(payload, indent=2, ensure_ascii=False) + "\n", encoding="utf-8"
+            )
+        except (OSError, ValueError, json.JSONDecodeError):
+            pass
 
     def write_html(self):
         from rlm.logging.html import write_report

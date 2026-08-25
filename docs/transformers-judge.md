@@ -33,6 +33,16 @@ Then run a complete candidate-and-judge pass. This needs Docker and
 uv run python evals/transformers_causal_lm_judge.py --run-rlm
 ```
 
+For a controlled local debugging run that lets the trace report show candidate
+model inputs and outputs, opt in explicitly:
+
+```bash
+uv run python evals/transformers_causal_lm_judge.py --run-rlm --trace-capture content
+```
+
+This writes capped, redacted artifacts only under the local evaluation run
+directory; the normal default is metadata-only tracing.
+
 To regrade a previous candidate without another RLM run:
 
 ```bash

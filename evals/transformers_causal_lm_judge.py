@@ -88,13 +88,14 @@ def cited_snippets(answer: str, repo: Path) -> list[CitationSnippet]:
 
 
 def judge_prompt(*, case: dict[str, Any], answer: str, snippets: list[CitationSnippet]) -> str:
-    evidence = "\n\n".join(
-        f"### {item.citation}\n```python\n{item.text}\n```" for item in snippets
-    ) or "No valid source citations were found in the candidate answer."
+    evidence = (
+        "\n\n".join(f"### {item.citation}\n```python\n{item.text}\n```" for item in snippets)
+        or "No valid source citations were found in the candidate answer."
+    )
     return f"""You are grading an answer to a source-grounded repository census.
 
 Task:
-{case['query']}
+{case["query"]}
 
 Candidate answer:
 ---
@@ -120,8 +121,10 @@ JUDGE_SCHEMA = {
         "scores": {
             "type": "object",
             "additionalProperties": False,
-            "properties": {name: {"type": "integer", "minimum": 0, "maximum": maximum}
-                           for name, maximum in RUBRIC.items()},
+            "properties": {
+                name: {"type": "integer", "minimum": 0, "maximum": maximum}
+                for name, maximum in RUBRIC.items()
+            },
             "required": list(RUBRIC),
         },
         "total": {"type": "integer", "minimum": 0, "maximum": 10},
@@ -137,8 +140,10 @@ def validate_judgment(judgment: dict[str, Any], snippets: list[CitationSnippet])
     scores = judgment.get("scores")
     if not isinstance(scores, dict) or set(scores) != set(RUBRIC):
         raise ValueError("Judge response did not include the required score fields.")
-    if any(not isinstance(scores[name], int) or not 0 <= scores[name] <= maximum
-           for name, maximum in RUBRIC.items()):
+    if any(
+        not isinstance(scores[name], int) or not 0 <= scores[name] <= maximum
+        for name, maximum in RUBRIC.items()
+    ):
         raise ValueError("Judge response included an invalid criterion score.")
     total = sum(scores.values())
     judgment["total"] = total
@@ -160,8 +165,14 @@ def judge(
     response = OpenAI().responses.create(
         model=model,
         input=judge_prompt(case=case, answer=answer, snippets=snippets),
-        text={"format": {"type": "json_schema", "name": "rlm_eval_judgment", "strict": True,
-                          "schema": JUDGE_SCHEMA}},
+        text={
+            "format": {
+                "type": "json_schema",
+                "name": "rlm_eval_judgment",
+                "strict": True,
+                "schema": JUDGE_SCHEMA,
+            }
+        },
     )
     try:
         parsed = json.loads(responses_text(response))
@@ -170,8 +181,10 @@ def judge(
     return validate_judgment(parsed, snippets)
 
 
-def run_candidate(*, repo: Path, query: str, log_dir: Path) -> tuple[str, dict[str, Any]]:
-    completion = RLM(log_dir=str(log_dir)).ask_repo(repo, query)
+def run_candidate(
+    *, repo: Path, query: str, log_dir: Path, trace_capture: str = "metadata"
+) -> tuple[str, dict[str, Any]]:
+    completion = RLM(log_dir=str(log_dir), trace_capture=trace_capture).ask_repo(repo, query)
     return completion.response, asdict(completion.usage)
 
 
@@ -183,6 +196,12 @@ def parse_args() -> argparse.Namespace:
     group.add_argument("--response-file", type=Path, help="Judge an existing RLM answer.")
     group.add_argument("--run-rlm", action="store_true", help="Run the candidate before judging.")
     parser.add_argument("--judge-model", default="gpt-5-mini")
+    parser.add_argument(
+        "--trace-capture",
+        choices=("metadata", "content"),
+        default="metadata",
+        help="Store capped, redacted model input/output artifacts locally for the candidate run.",
+    )
     parser.add_argument(
         "--output", type=Path, help="Write a JSON result; default is evals/results/."
     )
@@ -198,7 +217,10 @@ def main() -> int:
     usage: dict[str, Any] | None = None
     if args.run_rlm:
         answer, usage = run_candidate(
-            repo=repo, query=case["query"], log_dir=ROOT / ".rlm/evals/transformers"
+            repo=repo,
+            query=case["query"],
+            log_dir=ROOT / ".rlm/evals/transformers",
+            trace_capture=args.trace_capture,
         )
     else:
         answer = args.response_file.read_text(encoding="utf-8")

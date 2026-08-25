@@ -21,6 +21,7 @@ from rlm.errors import (
     StartupError,
 )
 from rlm.logging.html import resolve_run_dir, write_report
+from rlm.logging.trace import index_runs
 
 
 def _build_parser() -> argparse.ArgumentParser:
@@ -36,6 +37,7 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--cell-timeout", dest="cell_timeout_s", type=float)
     common.add_argument("--log-dir", dest="log_dir")
     common.add_argument("--verbose", action="store_true", default=None)
+    common.add_argument("--trace-capture", choices=("metadata", "content"))
     common.add_argument("--config", dest="config_path")
     common.add_argument("--dry-run", action="store_true")
 
@@ -65,6 +67,8 @@ def _build_parser() -> argparse.ArgumentParser:
         default=".rlm/logs",
         help="Run directory, events.jsonl, or log parent (latest run). Default: .rlm/logs",
     )
+    traces = sub.add_parser("traces", help="Print a compact local trace index.")
+    traces.add_argument("path", nargs="?", default=".rlm/logs")
 
     return p
 
@@ -106,6 +110,13 @@ def main(argv: list[str] | None = None) -> int:
         except FileNotFoundError as e:
             print(e, file=sys.stderr)
             return 4
+    if args.cmd == "traces":
+        try:
+            print(__import__("json").dumps(index_runs(args.path), indent=2, sort_keys=True))
+            return 0
+        except (FileNotFoundError, ValueError, __import__("json").JSONDecodeError) as e:
+            print(e, file=sys.stderr)
+            return 4
 
     if not query:
         print(
@@ -116,13 +127,9 @@ def main(argv: list[str] | None = None) -> int:
 
     try:
         if args.max_prompt_tokens is not None and args.max_prompt_tokens > HARD_MAX_PROMPT_TOKENS:
-            raise ConfigError(
-                f"--max-prompt-tokens cannot exceed {HARD_MAX_PROMPT_TOKENS}"
-            )
+            raise ConfigError(f"--max-prompt-tokens cannot exceed {HARD_MAX_PROMPT_TOKENS}")
         if args.max_instructions is not None and args.max_instructions > HARD_MAX_INSTRUCTIONS:
-            raise ConfigError(
-                f"--max-instructions cannot exceed {HARD_MAX_INSTRUCTIONS}"
-            )
+            raise ConfigError(f"--max-instructions cannot exceed {HARD_MAX_INSTRUCTIONS}")
         rlm = RLM(
             config_path=args.config_path,
             root_model=args.root_model,
@@ -136,6 +143,7 @@ def main(argv: list[str] | None = None) -> int:
             cell_timeout_s=args.cell_timeout_s,
             log_dir=args.log_dir,
             verbose=True if args.verbose else None,
+            trace_capture=args.trace_capture,
         )
         if args.cmd == "ask":
             repo = load_repo(args.path)

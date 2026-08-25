@@ -22,8 +22,9 @@ class FakeEnv:
         self._cell_timeout_s = cell_timeout_s
         self._max_stdout_chars = max_stdout_chars
 
-    def execute(self, code: str) -> Observation:
-        return run_cell(
+    def execute(self, code: str, *, trace_cell_id: str | None = None) -> Observation:  # noqa: ARG002
+        self.ns["_trace_events"] = []
+        obs = run_cell(
             self.ns,
             code,
             self._reserved,
@@ -31,6 +32,8 @@ class FakeEnv:
             max_send_chars=max(self._max_stdout_chars * 2, 8000),
             use_alarm=False,
         )
+        obs.tool_events = list(self.ns.get("_trace_events") or [])
+        return obs
 
     def close(self) -> None:
         return None

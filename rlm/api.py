@@ -61,6 +61,7 @@ class RLM:
         max_consecutive_errors: int | None = None,
         log_dir: str | None = None,
         verbose: bool | None = None,
+        trace_capture: str | None = None,
         extra_instructions: list[str] | None = None,
         config_path: str | Path | None = None,
         _client: Any = None,
@@ -83,6 +84,7 @@ class RLM:
             max_consecutive_errors=max_consecutive_errors,
             log_dir=log_dir,
             verbose=verbose,
+            trace_capture=trace_capture,
             extra_instructions=extra_instructions,
         )
         self._client = _client
@@ -113,6 +115,7 @@ class RLM:
                 "max_prompt_tokens": self.config.max_prompt_tokens,
                 "max_instructions": self.config.max_instructions,
                 "max_depth": self.config.max_depth,
+                "trace_capture": self.config.trace_capture,
                 **extra,
             },
         )

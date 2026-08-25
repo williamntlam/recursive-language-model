@@ -31,7 +31,7 @@ The host process owns the RLM loop, OpenAI calls, prompt guard, and trajectory l
 ## Host vs container
 
 ```
-Host                                              Container (rlm-repl:0.1.13)
+Host                                              Container (rlm-repl:0.1.14)
 ────                                              ─────────────────────────
 RLM loop                                          persistent Python interpreter
 OpenAI client + OPENAI_API_KEY                    context / repo / corpus variables
@@ -108,7 +108,7 @@ CLI (rlm.cli)  →  RLM (rlm.api)  →  Runtime (rlm.core.runtime)
 
 | Knob | Value |
 |---|---|
-| Image | `rlm-repl:0.1.13` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
+| Image | `rlm-repl:0.1.14` from `docker/Dockerfile` (`python:3.12-slim`, non-root uid 1000) |
 | Network | `network_mode="none"` |
 | `OPENAI_API_KEY` in container | unset |
 | Root filesystem | read-only; tmpfs on `/tmp` and `/repl` (64 MiB each) |

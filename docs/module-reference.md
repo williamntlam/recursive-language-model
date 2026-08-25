@@ -38,7 +38,7 @@ Installable package name: `recursive-language-model`. Import name: `rlm`. CLI: `
 | Module | Role |
 |---|---|
 | `base.py` | `Environment` protocol: `execute`, `close` |
-| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.13"` |
+| `docker.py` | `DockerEnv`, `CallbackServer`, `ensure_image`, `IMAGE_TAG = "rlm-repl:0.1.14"` |
 | `fake.py` | In-memory REPL for tests |
 
 ## `rlm.domains`
@@ -115,7 +115,7 @@ class LMResponse:
 | `HARD_PROMPT_TOKEN_EXCLUSIVE` | `config.py` | `100_000` |
 | `DEFAULT_CELL_TIMEOUT_S` | `config.py` | `300.0` |
 | `ALLOWED_ENVIRONMENTS` | `config.py` | `{"docker"}` |
-| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.13"` |
+| `IMAGE_TAG` | `environments/docker.py` | `"rlm-repl:0.1.14"` |
 | `ASK_LEAF_CHARS` | `core/history.py` | `24_000` (repo.ask / corpus.ask leaf cutoff) |
 | `CHARS_PER_TOKEN` | `core/history.py` | `4` (REPL token estimate) |
 | `PARENT_TOKEN_NUDGE` | `core/history.py` | `1500` |

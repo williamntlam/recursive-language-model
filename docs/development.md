@@ -17,7 +17,7 @@ recursive-language-model/
 ├── rlm.toml.example
 ├── rlm.yaml.example
 ├── docker/
-│   ├── Dockerfile                 # rlm-repl:0.1.13
+│   ├── Dockerfile                 # rlm-repl:0.1.14
 │   └── repl_server.py             # in-container cell runner + LM RPC client
 ├── rlm/                           # installable package
 ├── tests/

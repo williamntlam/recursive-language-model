@@ -15,7 +15,7 @@ from rlm.errors import BudgetExhaustedError, StartupError
 from rlm.ipc import read_msg, write_msg
 from rlm.repl_ns import DEFAULT_CELL_CPU_TIMEOUT_S, SubcallHandler
 
-IMAGE_TAG = "rlm-repl:0.1.13"
+IMAGE_TAG = "rlm-repl:0.1.14"
 
 # Peer closed the LM socket (cell timed out, container died, or host execute aborted).
 _PEER_GONE = (BrokenPipeError, ConnectionError, ConnectionResetError)
@@ -93,9 +93,7 @@ class CallbackServer(threading.Thread):
             # Do not name this `_handle`: on Python 3.13 Thread instances store
             # the OS handle in `_handle`, so `target=self._handle` would pass
             # a `_ThreadHandle` instead of the request method.
-            threading.Thread(
-                target=self._serve_request, args=(conn,), daemon=True
-            ).start()
+            threading.Thread(target=self._serve_request, args=(conn,), daemon=True).start()
 
     def _reply(self, conn: socket.socket, obj: dict) -> None:
         try:
@@ -115,6 +113,8 @@ class CallbackServer(threading.Thread):
                 return
             typ = req.get("type")
             try:
+                if hasattr(self.handler, "set_callback_context"):
+                    self.handler.set_callback_context(req.get("cell_span_id"))
                 if typ == "llm_query":
                     value = self.handler.llm_query(req.get("prompt", ""), model=req.get("model"))
                 elif typ == "llm_query_batched":
@@ -173,9 +173,7 @@ def _wait_for_socket(path: Path, timeout: float, logs_fn) -> socket.socket:
         extra = logs_fn() or ""
     except Exception:
         extra = ""
-    raise StartupError(
-        f"REPL socket {path} did not appear. Last error: {last_err}. Logs:\n{extra}"
-    )
+    raise StartupError(f"REPL socket {path} did not appear. Last error: {last_err}. Logs:\n{extra}")
 
 
 class DockerEnv:
@@ -235,9 +233,11 @@ class DockerEnv:
             self._conn = _wait_for_socket(
                 self.repl_sock_path,
                 timeout=30,
-                logs_fn=lambda: self.container.logs().decode("utf-8", errors="replace")
-                if self.container
-                else "",
+                logs_fn=lambda: (
+                    self.container.logs().decode("utf-8", errors="replace")
+                    if self.container
+                    else ""
+                ),
             )
             write_msg(
                 self._conn,
@@ -258,10 +258,10 @@ class DockerEnv:
             self.close()
             raise
 
-    def execute(self, code: str) -> Observation:
+    def execute(self, code: str, *, trace_cell_id: str | None = None) -> Observation:
         assert self._conn is not None
         self._conn.settimeout(host_exec_timeout(self.exec_wait_s))
-        write_msg(self._conn, {"type": "exec", "code": code})
+        write_msg(self._conn, {"type": "exec", "code": code, "cell_span_id": trace_cell_id})
         try:
             msg = read_msg(self._conn)
         except TimeoutError as e:
@@ -284,6 +284,7 @@ class DockerEnv:
             sha256=msg.get("sha256") or "",
             final=msg.get("final"),
             error=msg.get("error"),
+            tool_events=list(msg.get("tool_events") or []),
         )
 
     def close(self) -> None:

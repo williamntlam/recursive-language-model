@@ -13,3 +13,5 @@ max_consecutive_errors: 5
 cell_timeout_s: 300
 log_dir: .rlm/logs
 verbose: false
+# metadata is safe default; content writes capped, redacted local prompt/output artifacts.
+trace_capture: metadata

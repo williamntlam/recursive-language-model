@@ -7,6 +7,7 @@ import hashlib
 import io
 import signal
 import sys
+import time
 import traceback
 from collections.abc import Callable, Iterator
 from contextlib import contextmanager, redirect_stderr, redirect_stdout
@@ -41,6 +42,7 @@ def pause_alarm() -> Iterator[None]:
         if remaining > 0:
             signal.setitimer(signal.ITIMER_REAL, remaining)
 
+
 RESERVED_NAMES = (
     "context",
     "context_0",
@@ -74,17 +76,13 @@ class SubcallHandler:
     def llm_query(self, prompt: str, model: str | None = None) -> str:
         raise NotImplementedError
 
-    def llm_query_batched(
-        self, prompts: list[str], model: str | None = None
-    ) -> list[str]:
+    def llm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
         raise NotImplementedError
 
     def rlm_query(self, prompt: str, model: str | None = None) -> str:
         raise NotImplementedError
 
-    def rlm_query_batched(
-        self, prompts: list[str], model: str | None = None
-    ) -> list[str]:
+    def rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
         raise NotImplementedError
 
 
@@ -148,20 +146,64 @@ def create_namespace(
 
     ns: dict[str, Any] = {}
 
+    def trace_tool(name: str, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+        """Record metadata only; values and arguments can contain source text."""
+        events = ns.get("_trace_events")
+        started = time.perf_counter()
+        if isinstance(events, list):
+            events.append({"name": name, "event": "start", "arg_count": len(args) + len(kwargs)})
+        try:
+            result = fn(*args, **kwargs)
+        except Exception as e:
+            if isinstance(events, list):
+                events.append(
+                    {
+                        "name": name,
+                        "event": "end",
+                        "status": "error",
+                        "duration_ms": round((time.perf_counter() - started) * 1000),
+                        "error_type": type(e).__name__,
+                    }
+                )
+            raise
+        if isinstance(events, list):
+            size = len(result) if hasattr(result, "__len__") else None
+            events.append(
+                {
+                    "name": name,
+                    "event": "end",
+                    "status": "ok",
+                    "duration_ms": round((time.perf_counter() - started) * 1000),
+                    "result_count": size,
+                }
+            )
+        return result
+
+    class TracedObject:
+        def __init__(self, target: Any, prefix: str) -> None:
+            object.__setattr__(self, "_target", target)
+            object.__setattr__(self, "_prefix", prefix)
+
+        def __getattr__(self, name: str) -> Any:
+            value = getattr(object.__getattribute__(self, "_target"), name)
+            if callable(value) and not name.startswith("_"):
+                return lambda *args, **kwargs: trace_tool(
+                    f"{object.__getattribute__(self, '_prefix')}.{name}", value, *args, **kwargs
+                )
+            return value
+
+        def __setattr__(self, name: str, value: Any) -> None:
+            setattr(object.__getattribute__(self, "_target"), name, value)
+
     def _restricted_import(name, globals=None, locals=None, fromlist=(), level=0):  # noqa: A002
         root = name.split(".")[0]
         if root in BLOCKED_IMPORTS:
             raise ImportError(
-                f"import of {name!r} is reserved for the RLM host RPC. "
-                "Use llm_query / rlm_query."
+                f"import of {name!r} is reserved for the RLM host RPC. Use llm_query / rlm_query."
             )
         return _builtins.__import__(name, globals, locals, fromlist, level)
 
-    safe_builtins = {
-        k: getattr(_builtins, k)
-        for k in dir(_builtins)
-        if not k.startswith("_")
-    }
+    safe_builtins = {k: getattr(_builtins, k) for k in dir(_builtins) if not k.startswith("_")}
     # Keep the cell runner in charge of the process; everything else is normal Python.
     for banned in ("breakpoint", "exit", "quit", "help"):
         safe_builtins.pop(banned, None)
@@ -178,8 +220,7 @@ def create_namespace(
         total = len(text)
         if total > cap:
             text = (
-                text[:cap]
-                + f"\n...[print truncated, total_len={total}; "
+                text[:cap] + f"\n...[print truncated, total_len={total}; "
                 "assign to a variable and llm_query; do not print large strings]\n"
             )
         dest = file if file is not None else sys.stdout
@@ -236,7 +277,7 @@ def create_namespace(
         if not isinstance(name, str):
             kind = type(name).__name__
             raise TypeError(
-                f'FINAL_VAR requires a variable name as a str, got {kind}. '
+                f"FINAL_VAR requires a variable name as a str, got {kind}. "
                 'Assign the answer, then FINAL_VAR("that_name").'
             )
         if name not in ns:
@@ -247,18 +288,19 @@ def create_namespace(
     ns["llm_query_batched"] = llm_query_batched
     ns["rlm_query"] = rlm_query
     ns["rlm_query_batched"] = rlm_query_batched
-    ns["measure"] = measure_text
-    ns["measure_ast"] = measure_ast
-    ns["plan_reads"] = plan_reads
+    ns["measure"] = lambda *a, **kw: trace_tool("measure", measure_text, *a, **kw)
+    ns["measure_ast"] = lambda *a, **kw: trace_tool("measure_ast", measure_ast, *a, **kw)
+    ns["plan_reads"] = lambda *a, **kw: trace_tool("plan_reads", plan_reads, *a, **kw)
     ns["SHOW_VARS"] = SHOW_VARS
     ns["FINAL"] = FINAL
     ns["FINAL_VAR"] = FINAL_VAR
     ns["answer"] = {"ready": False, "value": None}
     ns["_rlm_final"] = None
     ns["_max_stdout_chars"] = max_stdout_chars
+    ns["_trace_events"] = []
 
     for key, value in bindings.items():
-        ns[key] = value
+        ns[key] = TracedObject(value, key) if key in {"repo", "corpus"} else value
         if key == "context" and "context_0" not in bindings:
             ns["context_0"] = value
 

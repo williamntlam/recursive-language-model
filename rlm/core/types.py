@@ -63,6 +63,7 @@ class Observation:
     sha256: str
     final: str | None = None
     error: str | None = None
+    tool_events: list[dict] = field(default_factory=list)
 
 
 @dataclass

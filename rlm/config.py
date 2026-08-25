@@ -15,6 +15,7 @@ HARD_MAX_PROMPT_TOKENS = 99_999
 HARD_MAX_INSTRUCTIONS = 150
 HARD_PROMPT_TOKEN_EXCLUSIVE = 100_000
 DEFAULT_CELL_TIMEOUT_S = 300.0
+TRACE_CAPTURE_PROFILES = frozenset({"metadata", "content"})
 
 ALLOWED_ENVIRONMENTS = frozenset({"docker"})
 FORBIDDEN_AUTH_KEYS = frozenset(
@@ -56,6 +57,7 @@ class Config:
     cell_timeout_s: float = DEFAULT_CELL_TIMEOUT_S
     log_dir: str = ".rlm/logs"
     verbose: bool = False
+    trace_capture: str = "metadata"
     extra_instructions: list[str] | None = None
 
     def __post_init__(self) -> None:
@@ -94,6 +96,8 @@ class Config:
             raise ConfigError("max_timeout_s must be > 0")
         if self.cell_timeout_s <= 0:
             raise ConfigError("cell_timeout_s must be > 0")
+        if self.trace_capture not in TRACE_CAPTURE_PROFILES:
+            raise ConfigError("trace_capture must be 'metadata' or 'content'")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -155,6 +159,7 @@ _COERCE = {
     "cell_timeout_s": _as_float,
     "log_dir": _as_str,
     "verbose": _as_bool,
+    "trace_capture": _as_str,
     "extra_instructions": _as_opt_str_list,
 }
 

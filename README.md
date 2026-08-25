@@ -74,7 +74,7 @@ flowchart LR
 Host vs container:
 
 ```
-Host                                              Container (rlm-repl:0.1.13)
+Host                                              Container (rlm-repl:0.1.14)
 ────                                              ─────────────────────────
 RLM loop, OpenAI, OPENAI_API_KEY                  persistent Python, no key, no net
 prompt guard (<100k tokens, ≤150 instructions)    /workspace mounted read-only
@@ -133,7 +133,7 @@ cp .env.example .env   # then put your key in .env
 Build the REPL image on first real completion (or ahead of time):
 
 ```bash
-docker build -t rlm-repl:0.1.13 -f docker/Dockerfile .
+docker build -t rlm-repl:0.1.14 -f docker/Dockerfile .
 ```
 
 Bump this tag whenever `repl_ns.py`, `history.py`, or other files copied into the image change. `ensure_image` only builds if the tag is missing.

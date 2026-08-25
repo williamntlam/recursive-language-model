@@ -28,6 +28,9 @@ WORKSPACE = Path("/workspace")
 
 
 class RpcHandler(SubcallHandler):
+    def __init__(self) -> None:
+        self.cell_span_id: str | None = None
+
     def _call(self, payload: dict) -> object:
         sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         sock.connect(LM_SOCK)
@@ -42,19 +45,51 @@ class RpcHandler(SubcallHandler):
         return resp.get("value")
 
     def llm_query(self, prompt: str, model: str | None = None) -> str:
-        return str(self._call({"type": "llm_query", "prompt": prompt, "model": model}))
+        return str(
+            self._call(
+                {
+                    "type": "llm_query",
+                    "prompt": prompt,
+                    "model": model,
+                    "cell_span_id": self.cell_span_id,
+                }
+            )
+        )
 
     def llm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
-        value = self._call({"type": "llm_query_batched", "prompts": prompts, "model": model})
+        value = self._call(
+            {
+                "type": "llm_query_batched",
+                "prompts": prompts,
+                "model": model,
+                "cell_span_id": self.cell_span_id,
+            }
+        )
         if isinstance(value, list):
             return [str(x) for x in value]
         return [str(value)]
 
     def rlm_query(self, prompt: str, model: str | None = None) -> str:
-        return str(self._call({"type": "rlm_query", "prompt": prompt, "model": model}))
+        return str(
+            self._call(
+                {
+                    "type": "rlm_query",
+                    "prompt": prompt,
+                    "model": model,
+                    "cell_span_id": self.cell_span_id,
+                }
+            )
+        )
 
     def rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
-        value = self._call({"type": "rlm_query_batched", "prompts": prompts, "model": model})
+        value = self._call(
+            {
+                "type": "rlm_query_batched",
+                "prompts": prompts,
+                "model": model,
+                "cell_span_id": self.cell_span_id,
+            }
+        )
         if isinstance(value, list):
             return [str(x) for x in value]
         return [str(value)]
@@ -92,6 +127,7 @@ def serve() -> None:
     srv.listen(1)
     conn, _ = srv.accept()
     ns = None
+    handler = RpcHandler()
     reserved = None
     max_stdout = 4000
     cell_timeout = DEFAULT_CELL_CPU_TIMEOUT_S
@@ -103,20 +139,20 @@ def serve() -> None:
                 max_stdout = int(msg.get("max_stdout_chars") or 4000)
                 raw_timeout = msg.get("cell_timeout_s")
                 cell_timeout = (
-                    float(raw_timeout)
-                    if raw_timeout is not None
-                    else DEFAULT_CELL_CPU_TIMEOUT_S
+                    float(raw_timeout) if raw_timeout is not None else DEFAULT_CELL_CPU_TIMEOUT_S
                 )
                 mode = msg.get("mode") or "string"
                 query = msg.get("query") or ""
                 bindings = bind_workspace(mode, query)
-                ns = create_namespace(bindings, RpcHandler(), max_stdout_chars=max_stdout)
+                ns = create_namespace(bindings, handler, max_stdout_chars=max_stdout)
                 reserved = snapshot_reserved(ns)
                 write_msg(conn, {"type": "ok"})
             elif typ == "exec":
                 if ns is None or reserved is None:
                     write_msg(conn, {"type": "error", "message": "not initialized"})
                     continue
+                ns["_trace_events"] = []
+                handler.cell_span_id = msg.get("cell_span_id")
                 obs = run_cell(
                     ns,
                     msg.get("code") or "",
@@ -136,6 +172,7 @@ def serve() -> None:
                         "sha256": obs.sha256,
                         "final": obs.final,
                         "error": obs.error,
+                        "tool_events": ns.get("_trace_events") or [],
                     },
                 )
             elif typ == "shutdown":
