@@ -23,6 +23,9 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Changed
 
+- **2026-08-25 08:50 EDT** — Extended the `overengineering-check` skill to
+  review specifications and assess whether added complexity has a clear,
+  current justification.
 - **2026-08-24 17:17 EDT** — Updated the README and developer documentation for
   Harbor tasks, repeated trials, deterministic checks, and changelog hooks.
 - **2026-08-24 17:14 EDT** — Documented Harbor tasks as the supported agent-benchmark entry point.
