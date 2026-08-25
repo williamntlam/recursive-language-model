@@ -33,6 +33,7 @@ files, or every skill merely to orient yourself.
 | Add or modify an LLM-as-judge evaluation, rubric, case, or long-context benchmark | `skills/evaluation/SKILL.md` |
 | Tests, regression diagnosis, or validation | `skills/testing/SKILL.md` |
 | Trajectory reports, logging, or error presentation | `skills/observability/SKILL.md` |
+| Review a change or design for unnecessary complexity, speculative abstraction, or premature extensibility | `skills/overengineering-check/SKILL.md` |
 | Documentation or examples only | Inspect the relevant document directly. |
 
 For an unfamiliar task, inspect the closest source file and focused test first;
