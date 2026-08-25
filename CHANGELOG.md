@@ -11,6 +11,8 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-25 08:46 EDT** — An `overengineering-check` project skill for
+  evidence-based review of unnecessary complexity and speculative abstraction.
 - **2026-08-24 17:16 EDT** — A version-controlled pre-push hook that blocks
   outgoing commits without a `CHANGELOG.md` update.
 - **2026-08-24 17:14 EDT** — A Harbor-compatible, read-only source-grounding task dataset at
