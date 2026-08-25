@@ -11,6 +11,10 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-25 17:52 EDT** — Versioned causal execution traces with JSONL
+  spans, deterministic summaries, evaluation indexing, safe capture profiles,
+  and offline tree/graph reporting for runtime, REPL, callback, model, and
+  source-tool activity.
 - **2026-08-25 08:46 EDT** — An `overengineering-check` project skill for
   evidence-based review of unnecessary complexity and speculative abstraction.
 - **2026-08-24 17:16 EDT** — A version-controlled pre-push hook that blocks
