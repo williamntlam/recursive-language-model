@@ -68,3 +68,10 @@ def test_repo_measure_does_not_include_body():
     plan = repo.plan(["src/deep/secret.py", "src/utils.py"])
     assert plan["n_child"] == 0
     assert plan["n_fit"] == 2
+
+
+def test_plan_reads_rejects_unmeasured_repository_path():
+    import pytest
+
+    with pytest.raises(ValueError, match="Use repo.plan"):
+        plan_reads([{"path": "src/model.py", "start": 1, "end": None}])

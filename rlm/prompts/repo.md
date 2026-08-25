@@ -14,7 +14,7 @@ Methods:
 Strategy:
 
 1. Grep or glob to get paths (print counts and a few hits).
-2. `repo.file_text` + `measure_ast` / `ast.parse` **in this REPL**. `plan_reads` on the spans you care about (`name == "forward"`, …). Keep records in variables; do not print bodies.
+2. `repo.file_text` + `measure_ast` / `ast.parse` **in this REPL**. Use `repo.plan([{path, start, end}, ...])` for paths; use `plan_reads` only on text, counts, or measured AST rows (`name == "forward"`, …). `ast.get_source_segment` may return `None`, so use `(... or "")` before slicing. Keep records in variables; do not print bodies.
 3. `repo.ask` / `llm_query` only for `route=="fit"` spans code cannot decide. Prefer `n_chunks` leaves over `n_child` gpt-5 children.
 4. `repo.explore` / `rlm_query_batched` only if `n_child > 0` and the span is still too large to chunk. Prefer `{"question": q, "path": p}` dicts if you batch.
 5. Reduce into a name you assigned, then `FINAL_VAR("that_name")`. Never dump the repository into chat.

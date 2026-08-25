@@ -48,7 +48,7 @@ These run **in the container** (no tiktoken). Token counts are `(n_chars + 3) //
 |---|---|
 | `measure(text)` | `{n_chars, n_lines, n_tokens, route, n_chunks, leaf_chars}` plus `chunks` (line ranges) when `route == "child"` |
 | `measure_ast(source)` | One row per `ClassDef` / `FunctionDef` / `AsyncFunctionDef`: `name`, `qualname`, `kind`, `start`, `end`, plus the size fields. **No function bodies.** Filter in Python (`[s for s in rows if s["name"] == "forward"]`) then `plan_reads` |
-| `plan_reads(spans)` | `{n_fit, n_child, n_chunks, leaf_chars, spans}`. Items may be texts, char counts, or dicts already measured |
+| `plan_reads(spans)` | `{n_fit, n_child, n_chunks, leaf_chars, spans}`. Items may be texts, char counts, or dicts already measured; it rejects unmeasured `{path, ...}` dictionaries—use `repo.plan` / `corpus.plan` for those. |
 
 `route == "fit"` means the span is ≤ 24k characters (one leaf, or classify with `ast` here). `route == "child"` means it would bloat a leaf; spawn a child RLM **or** map `n_chunks` line-aligned leaves.
 

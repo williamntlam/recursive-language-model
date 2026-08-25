@@ -27,6 +27,9 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Changed
 
+- **2026-08-25 17:56 EDT** — Made `plan_reads` reject unmeasured repository
+  path dictionaries, clarified that path planning belongs to `repo.plan`, and
+  documented safe handling of nullable AST source segments.
 - **2026-08-25 08:50 EDT** — Extended the `overengineering-check` skill to
   review specifications and assess whether added complexity has a clear,
   current justification.

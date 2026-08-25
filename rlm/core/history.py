@@ -36,8 +36,7 @@ def compact_repr(value: Any, *, max_chars: int = DISPLAY_MAX_CHARS) -> str:
     text = _compact(value, max_chars=max_chars, depth=0)
     if len(text) > max_chars:
         return (
-            text[:max_chars]
-            + f"\n...[truncated, total_len={len(text)}; "
+            text[:max_chars] + f"\n...[truncated, total_len={len(text)}; "
             "keep in a variable and llm_query this slice]"
         )
     return text
@@ -115,24 +114,18 @@ def format_observation(obs: Observation, max_chars: int) -> str:
         )
     elif len(stdout) > max_chars:
         parts.append(stdout[:max_chars])
-        parts.append(
-            f"...[truncated, total_len={obs.total_stdout_len}, sha256={obs.sha256}]"
-        )
+        parts.append(f"...[truncated, total_len={obs.total_stdout_len}, sha256={obs.sha256}]")
     else:
         parts.append(stdout)
         if obs.total_stdout_len > len(stdout):
-            parts.append(
-                f"...[truncated, total_len={obs.total_stdout_len}, sha256={obs.sha256}]"
-            )
+            parts.append(f"...[truncated, total_len={obs.total_stdout_len}, sha256={obs.sha256}]")
     stderr = obs.stderr or ""
     if stderr:
         parts.append("--- stderr ---")
         if len(stderr) > max_chars:
             err_hash = sha256_text(stderr)
             parts.append(stderr[:max_chars])
-            parts.append(
-                f"...[truncated, total_len={obs.total_stderr_len}, sha256={err_hash}]"
-            )
+            parts.append(f"...[truncated, total_len={obs.total_stderr_len}, sha256={err_hash}]")
         else:
             parts.append(stderr)
             if obs.total_stderr_len > len(stderr):
@@ -183,8 +176,7 @@ def compact_parent_hist(
         elif msg.role == "user":
             hist[i] = Message(
                 "user",
-                f"{_OBS_STUB_PREFIX}, {n} chars, sha256={digest}; "
-                "values remain in REPL variables)",
+                f"{_OBS_STUB_PREFIX}, {n} chars, sha256={digest}; values remain in REPL variables)",
             )
 
 
@@ -359,6 +351,12 @@ def _coerce_plan_item(item: Any, *, leaf_chars: int) -> dict[str, Any]:
         if "n_chars" in item:
             row = measure_size(int(item["n_chars"]), leaf_chars=leaf_chars)
             return {**item, **row}
+        if "path" in item or "file" in item:
+            raise ValueError(
+                "plan_reads cannot size repository paths. Use repo.plan(spans) or "
+                "repo.measure(path) first; plan_reads accepts text, character counts, "
+                "or rows returned by measure/measure_ast."
+            )
         return measure_size(0, leaf_chars=leaf_chars)
     if isinstance(item, str):
         return measure_text(item, leaf_chars=leaf_chars)
@@ -388,9 +386,7 @@ def route_read_subcall(
             )
         )
     if llm_fn is None:
-        raise RuntimeError(
-            "No llm_query/rlm_query bound. Call llm_query(question + text) instead."
-        )
+        raise RuntimeError("No llm_query/rlm_query bound. Call llm_query(question + text) instead.")
     return str(
         llm_fn(
             f"{question}\n\nSource: {loc}\n"
