@@ -11,6 +11,10 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-26 19:29 EDT** — Scoped recursive research with staged prompts,
+  string-only final answers, target-enforced child domain views, trace scope
+  metadata, and automatic scoping for oversized `repo.ask` / `corpus.ask`
+  calls and path-targeted `rlm_query` requests.
 - **2026-08-26 19:07 EDT** — Reference specification 005 for staged research,
   enforced scoped child exploration, and rendered string-only final answers.
 - **2026-08-26 18:52 EDT** — Centralized redacted REPL failure indexing at
