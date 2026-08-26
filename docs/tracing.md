@@ -10,6 +10,11 @@ Every RLM trajectory contains a machine-readable, local execution trace:
 └── artifacts/           # only with trace_capture = "content"
 ```
 
+For cross-run REPL diagnosis, `.rlm/repl_errors.jsonl` sits beside the default
+`logs/` directory. It is a bounded, redacted index of startup, execution, and
+cell failures that links back to the owning trajectory; it does not retain
+prompts, source content, or REPL code.
+
 `trace.jsonl` is schema version 1. Each record has a trace/span/parent ID, a
 locked monotonic sequence number, timestamp, depth, kind, and lifecycle event.
 It records root and leaf model calls, recursive runs, callbacks, batches, REPL

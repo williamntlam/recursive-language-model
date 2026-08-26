@@ -1,5 +1,10 @@
+import json
 from pathlib import Path
 
+import pytest
+
+from rlm.api import RLM
+from rlm.backends.base import FakeClient
 from rlm.cli import main
 from rlm.core.types import Usage
 from rlm.logging.html import resolve_run_dir
@@ -160,6 +165,46 @@ def test_repl_stderr_writes_error_txt(tmp_path):
     assert "ZeroDivisionError" in text
     assert "1/0" in text
     assert "=== repl" in text
+
+
+def test_repl_errors_are_indexed_across_runs_without_code(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [repl("secret_literal = 'do not copy this'\n1/0\n"), repl("FINAL('recovered')\n")],
+        max_consecutive_errors=5,
+    )
+    out = rlm.completion("q", "context")
+    index = tmp_path / "repl_errors.jsonl"
+    rows = [json.loads(line) for line in index.read_text(encoding="utf-8").splitlines()]
+    assert len(rows) == 1
+    row = rows[0]
+    assert row["stage"] == "cell"
+    assert row["trajectory"] == str(out.trajectory)
+    assert row["error_type"] == "ReplCellError"
+    assert row["code_n_chars"] > 0
+    assert "code_sha256" in row
+    assert "secret_literal" not in json.dumps(row)
+
+
+def test_repl_startup_errors_are_indexed(tmp_path):
+    def unavailable_env(**kwargs):  # noqa: ARG001
+        raise RuntimeError("REPL image is unavailable")
+
+    rlm = RLM(
+        _client=FakeClient([]),
+        _env_factory=unavailable_env,
+        log_dir=str(tmp_path / "logs"),
+    )
+    with pytest.raises(RuntimeError, match="image is unavailable"):
+        rlm.completion("q", "context")
+
+    rows = [
+        json.loads(line)
+        for line in (tmp_path / "repl_errors.jsonl").read_text(encoding="utf-8").splitlines()
+    ]
+    assert len(rows) == 1
+    assert rows[0]["stage"] == "startup"
+    assert rows[0]["error_type"] == "RuntimeError"
 
 
 def test_parse_error_writes_error_txt(tmp_path):

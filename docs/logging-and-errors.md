@@ -24,6 +24,11 @@ uv run rlm report .rlm/logs/<run-id>
 ```
 
 `log_dir` is configurable (default `.rlm/logs`). The directory is gitignored via `.rlm/`.
+Alongside the default logs directory, `.rlm/repl_errors.jsonl` is an append-only
+cross-run index of REPL startup, host-execution, and in-cell failures. Each row
+links to its trajectory and records only bounded, redacted error text plus code
+length/digest; prompts, source content, and REPL code remain out of this shared
+index. With a custom `log_dir`, the index is written beside that directory.
 
 `meta.json` includes `id`, `query_sha256`, `query_n_chars`, plus extras from the facade:
 

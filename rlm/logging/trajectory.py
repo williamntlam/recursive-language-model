@@ -39,6 +39,8 @@ class TrajectoryLogger:
         self.dir.mkdir(parents=True, exist_ok=True)
         self.events_path = self.dir / "events.jsonl"
         self.error_path = self.dir / "error.txt"
+        # With the default ``.rlm/logs``, this is ``.rlm/repl_errors.jsonl``.
+        self.repl_errors_path = self.dir.parent.parent / "repl_errors.jsonl"
         self.trace = TraceWriter(self.dir)
         self.trace_capture = str(extra_meta.get("trace_capture") or "metadata")
         self._artifact_bytes = 0
@@ -131,6 +133,48 @@ class TrajectoryLogger:
         with self.error_path.open("a", encoding="utf-8") as f:
             f.write(chunk)
 
+    def record_repl_error(
+        self,
+        text: str,
+        *,
+        stage: str,
+        iteration: int | None = None,
+        depth: int | None = None,
+        error_type: str | None = None,
+        code: str | None = None,
+    ) -> None:
+        """Append a bounded, redacted REPL failure to the cross-run index.
+
+        The index deliberately excludes prompts, source, and raw REPL code;
+        the owning run directory holds the fuller local diagnostic.
+        """
+        body = redact(text or "").strip()
+        if not body:
+            return
+        record: dict[str, Any] = {
+            "schema_version": 1,
+            "ts_unix_ms": int(time.time() * 1000),
+            "run_id": self.dir.name,
+            "trajectory": str(self.dir),
+            "stage": stage,
+            "message": body[:4000],
+            "message_truncated": len(body) > 4000,
+        }
+        if iteration is not None:
+            record["iteration"] = iteration
+        if depth is not None:
+            record["depth"] = depth
+        if error_type:
+            record["error_type"] = error_type
+        if code is not None:
+            raw_code = str(code)
+            record["code_sha256"] = __import__("hashlib").sha256(
+                raw_code.encode("utf-8")
+            ).hexdigest()
+            record["code_n_chars"] = len(raw_code)
+        with self.repl_errors_path.open("a", encoding="utf-8") as f:
+            f.write(json.dumps(_safe(record), ensure_ascii=False) + "\n")
+
     def _maybe_record_event_error(self, record: dict[str, Any]) -> None:
         kind = str(record.get("kind") or "")
         iteration = record.get("iteration")
@@ -143,6 +187,15 @@ class TrajectoryLogger:
                     iteration=iteration if isinstance(iteration, int) else None,
                     depth=depth if isinstance(depth, int) else None,
                     kind="repl",
+                    code=None if record.get("code") is None else str(record.get("code")),
+                )
+            if record.get("error"):
+                self.record_repl_error(
+                    str(record["error"]),
+                    stage="cell",
+                    iteration=iteration if isinstance(iteration, int) else None,
+                    depth=depth if isinstance(depth, int) else None,
+                    error_type="ReplCellError",
                     code=None if record.get("code") is None else str(record.get("code")),
                 )
             return

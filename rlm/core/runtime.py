@@ -148,13 +148,30 @@ class Runtime:
         self._workspace = workspace
         self._bindings = bindings
         self._metadata = metadata
-        env = self.env_factory(
-            bindings=bindings,
-            handler=self.handler,
-            mode=mode,
-            workspace=workspace,
-            config=self.config,
-        )
+        try:
+            env = self.env_factory(
+                bindings=bindings,
+                handler=self.handler,
+                mode=mode,
+                workspace=workspace,
+                config=self.config,
+            )
+        except BaseException as e:
+            # Environment construction is REPL startup, even though no cell
+            # has run yet. Retain a cross-run diagnostic for it.
+            self.logger.record_repl_error(
+                str(e), stage="startup", depth=self.depth, error_type=type(e).__name__
+            )
+            self.logger.record_stderr(
+                f"{type(e).__name__}: {e}", kind="repl_startup", depth=self.depth
+            )
+            self.logger.abort_trace(e, depth=self.depth)
+            if self.depth == 0:
+                try:
+                    self.logger.write_html()
+                except OSError:
+                    pass
+            raise
         last_code: str | None = None
         identical = 0
         consec_err = 0
@@ -294,6 +311,21 @@ class Runtime:
                         status="error",
                         started=cell_started,
                         error_type=type(e).__name__,
+                    )
+                    self.logger.record_repl_error(
+                        str(e),
+                        stage="execute",
+                        iteration=i,
+                        depth=self.depth,
+                        error_type=type(e).__name__,
+                        code=code,
+                    )
+                    self.logger.record_stderr(
+                        f"{type(e).__name__}: {e}",
+                        kind="repl_execute",
+                        iteration=i,
+                        depth=self.depth,
+                        code=code,
                     )
                     raise
                 self._record_tool_events(obs.tool_events, cell_span)
