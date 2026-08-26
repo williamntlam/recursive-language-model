@@ -11,6 +11,8 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-26 19:07 EDT** — Reference specification 005 for staged research,
+  enforced scoped child exploration, and rendered string-only final answers.
 - **2026-08-26 18:52 EDT** — Centralized redacted REPL failure indexing at
   `.rlm/repl_errors.jsonl`, linking startup, execution, and cell errors back
   to their trajectories without retaining prompts, source content, or code.
