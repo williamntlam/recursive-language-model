@@ -11,6 +11,15 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-26 19:45 EDT** — Reference specification 008 for an explicitly
+  capped semantic-sweep map-reduce command with per-unit LLM verdicts,
+  metadata-only reduction, and coverage-aware artifacts.
+- **2026-08-26 19:45 EDT** — Reference specification 007 for global,
+  content-free repository metadata candidate discovery and explainable
+  filename/package-topology relationships.
+- **2026-08-26 19:45 EDT** — Reference specification 006 for deterministic
+  scope manifests and an opt-in `--planner-enabled` constrained research
+  planner.
 - **2026-08-26 19:29 EDT** — Scoped recursive research with staged prompts,
   string-only final answers, target-enforced child domain views, trace scope
   metadata, and automatic scoping for oversized `repo.ask` / `corpus.ask`
