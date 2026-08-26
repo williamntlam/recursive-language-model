@@ -117,9 +117,10 @@ def test_large_ask_routes_to_rlm_query_not_leaf():
         seen["llm"] += 1
         return "leaf"
 
-    def rlm(prompt):
+    def rlm(prompt, *, targets=None):
         seen["rlm"] += 1
         assert "x" * 50 not in prompt
+        assert targets == [{"path": "src/utils.py", "start": None, "end": None}]
         return "from-child"
 
     repo._query_fn = llm
@@ -139,7 +140,7 @@ def test_medium_ask_routes_to_leaf_not_rlm_query():
         seen["llm"] += 1
         return "leaf"
 
-    def rlm(prompt):
+    def rlm(prompt, *, targets=None):
         seen["rlm"] += 1
         return "from-child"
 
@@ -150,3 +151,51 @@ def test_medium_ask_routes_to_leaf_not_rlm_query():
     assert out == "leaf"
     assert seen["llm"] == 1
     assert seen["rlm"] == 0
+
+
+def test_scoped_repo_restricts_reads_and_searches():
+    repo = load_repo(
+        FIXTURE_REPO,
+        # Scope only the marker line; broad queries must not expose utils.py.
+        targets=[{"path": "src/deep/secret.py", "start": 1, "end": 20}],
+    )
+    assert [f.path for f in repo.files()] == ["src/deep/secret.py"]
+    assert repo.glob("src/deep/secret.py") == ["src/deep/secret.py"]
+    assert repo.grep(MARKER)[0].path == "src/deep/secret.py"
+    assert MARKER in repo.read("src/deep/secret.py", 1, 20)
+    for fn in (
+        lambda: repo.read("src/utils.py"),
+        lambda: repo.measure("src/utils.py"),
+        lambda: repo.file_text("src/utils.py"),
+        lambda: repo.glob("**/*.py"),
+    ):
+        import pytest
+
+        with pytest.raises(ValueError, match="target scope"):
+            fn()
+
+
+def test_scoped_repo_child_cannot_escape_and_records_path_free_metadata(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            repl(
+                "targets = [{'path': 'src/deep/secret.py', 'start': 1, 'end': 20}]\n"
+                "ans = repo.explore('find marker', targets=targets)\n"
+                "FINAL(ans)\n"
+            ),
+            repl(
+                "try:\n"
+                "    repo.grep('def', glob='**/*.py')\n"
+                "except ValueError as exc:\n"
+                "    blocked = str(exc)\n"
+                "hits = repo.grep('AUTOCAST_CPU_BF16_IMPL_MARKER')\n"
+                "FINAL(hits[0].path)\n"
+            ),
+        ],
+    )
+    out = rlm.ask_repo(FIXTURE_REPO, "Where is the marker?")
+    assert out.response == "src/deep/secret.py"
+    trace = (out.trajectory / "trace.jsonl").read_text(encoding="utf-8")
+    assert '"scoped":true' in trace or '"scoped": true' in trace
+    assert "src/deep/secret.py" not in trace

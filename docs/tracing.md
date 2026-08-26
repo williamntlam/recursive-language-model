@@ -27,6 +27,10 @@ source content, callback payloads, or credentials. Set
 `trace_capture = "content"` only for controlled local debugging: it adds
 redacted, capped prompt/output artifacts under the run directory.
 
+Scoped `repo.explore` / `corpus.explore` callbacks additionally record only
+`scoped`, `target_count`, and a digest of the normalized target manifest. Paths,
+IDs, and source text are not included in metadata capture.
+
 Use `rlm report <run>` for the offline HTML view, or `rlm traces [log-dir]` to
 emit a compact deterministic JSON index without reading artifacts.
 

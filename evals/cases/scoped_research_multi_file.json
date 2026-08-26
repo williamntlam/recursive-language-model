@@ -1,0 +1,6 @@
+{
+  "id": "transformers-scoped-research-multi-file-v1",
+  "repository": "codebases/transformers",
+  "query": "Compare the selected causal-LM forward implementations across a bounded set of representative files. First inventory and classify candidate paths deterministically, then inspect only selected spans. Cite a compact representative set of source locations; do not repeatedly scan the full repository or delegate an unbounded repository search.",
+  "criteria_file": "evals/criteria/scoped_research_multi_file.md"
+}

@@ -56,8 +56,12 @@ class RuntimeHandler(SubcallHandler):
     def llm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
         return self.runtime.callback_batch("llm_query_batched", prompts, model, self._cell_span_id)
 
-    def rlm_query(self, prompt: str, model: str | None = None) -> str:
-        return self.runtime.callback("rlm_query", prompt, model, self._cell_span_id)
+    def rlm_query(
+        self, prompt: str, model: str | None = None, *, targets: list[dict[str, Any]] | None = None
+    ) -> str:
+        return self.runtime.callback(
+            "rlm_query", prompt, model, self._cell_span_id, targets=targets
+        )
 
     def rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
         return self.runtime.callback_batch("rlm_query_batched", prompts, model, self._cell_span_id)
@@ -433,6 +437,8 @@ class Runtime:
         prompt: str,
         model: str | None = None,
         cell_span_id: str | None = None,
+        *,
+        targets: list[dict[str, Any]] | None = None,
     ) -> str:
         parent = cell_span_id or self.run_span_id
         started = time.perf_counter()
@@ -444,12 +450,15 @@ class Runtime:
             requested_model=model,
             prompt_n_chars=len(prompt),
             prompt_digest=sha256_text(prompt),
+            scoped=targets is not None,
+            target_count=len(targets or ()),
+            target_manifest_digest=sha256_text(repr(targets)) if targets is not None else None,
         )
         try:
             value = (
                 self.leaf_complete(prompt, model=model, parent_span_id=span)
                 if name == "llm_query"
-                else self.child_rlm(prompt, model=model, parent_span_id=span)
+                else self.child_rlm(prompt, model=model, parent_span_id=span, targets=targets)
             )
         except Exception as e:
             self.logger.trace.end(
@@ -638,7 +647,12 @@ class Runtime:
         return resp.text
 
     def child_rlm(
-        self, prompt: str, model: str | None = None, *, parent_span_id: str | None = None
+        self,
+        prompt: str,
+        model: str | None = None,
+        *,
+        parent_span_id: str | None = None,
+        targets: list[dict[str, Any]] | None = None,
     ) -> str:
         try:
             self.budget.check()
@@ -663,7 +677,9 @@ class Runtime:
             extra_instructions=self.config.extra_instructions,
             verbose=self.config.verbose,
         )
-        query, metadata, bindings, workspace, mode, cleanup, domain = self._child_launch(prompt)
+        query, metadata, bindings, workspace, mode, cleanup, domain = self._child_launch(
+            prompt, targets
+        )
         child = Runtime(
             child_config,
             self.client,
@@ -696,16 +712,19 @@ class Runtime:
             depth=self.depth,
             child_depth=child_depth,
             answer_n_chars=len(result.response),
+            scoped=targets is not None,
+            target_count=len(targets or ()),
+            target_manifest_digest=sha256_text(repr(targets)) if targets is not None else None,
         )
         return result.response
 
     def _child_launch(
-        self, prompt: str
+        self, prompt: str, targets: list[dict[str, Any]] | None = None
     ) -> tuple[str, str, dict[str, Any], Path, str, bool, str | None]:
         """Repo/corpus children inherit the workspace; string children bind `context`."""
         mode = self.mode or "string"
         if mode == "repo" and self._workspace is not None:
-            repo = self._clone_repo()
+            repo = self._clone_repo(targets=targets)
             bindings: dict[str, Any] = {
                 "query": prompt,
                 "repo": repo,
@@ -716,9 +735,11 @@ class Runtime:
                 "Do only the subtask. Grep/ast here; llm_query tight slices; "
                 "recurse only if still too large. FINAL a short cited answer.\n"
             )
+            if targets is not None:
+                metadata += f"Target manifest (enforced): {targets!r}. Cite only declared spans.\n"
             return prompt, metadata, bindings, self._workspace, "repo", False, "repo"
         if mode == "research" and self._workspace is not None:
-            corpus = self._clone_corpus()
+            corpus = self._clone_corpus(targets=targets)
             bindings = {
                 "query": prompt,
                 "corpus": corpus,
@@ -729,20 +750,24 @@ class Runtime:
                 "Do only the subtask. Search/slice here; llm_query tight spans; "
                 "recurse only if still too large. FINAL a short cited answer.\n"
             )
+            if targets is not None:
+                metadata += f"Target manifest (enforced): {targets!r}. Cite only declared spans.\n"
             return prompt, metadata, bindings, self._workspace, "research", False, "research"
         workspace, cleanup = workspace_for_string(prompt)
         bindings = {"query": CHILD_QUERY, "context": prompt}
         return CHILD_QUERY, string_metadata(prompt), bindings, workspace, "string", cleanup, None
 
-    def _clone_repo(self) -> Any:
+    def _clone_repo(self, *, targets: list[dict[str, Any]] | None = None) -> Any:
         repo = self._bindings.get("repo")
         if repo is None:
             from rlm.domains.repo import Repo
 
-            return Repo(self._workspace)
-        return type(repo)(repo.root, ignore=getattr(repo, "ignore", ()))
+            return Repo(self._workspace, targets=targets)
+        if targets is None:
+            targets = getattr(repo, "targets", None)
+        return type(repo)(repo.root, ignore=getattr(repo, "ignore", ()), targets=targets)
 
-    def _clone_corpus(self) -> Any:
+    def _clone_corpus(self, *, targets: list[dict[str, Any]] | None = None) -> Any:
         corpus = self._bindings.get("corpus")
         if corpus is None:
             from rlm.domains.corpus import load_corpus
@@ -750,7 +775,9 @@ class Runtime:
             return load_corpus(self._workspace)
         from rlm.domains.corpus import Corpus
 
-        return Corpus(list(corpus.docs))
+        if targets is None:
+            targets = getattr(corpus, "targets", None)
+        return Corpus(list(corpus.docs), targets=targets)
 
     def batched(
         self, fn, prompts: list[str], model: str | None, *, parent_span_id: str | None = None

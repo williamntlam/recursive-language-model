@@ -54,7 +54,7 @@ These run **in the container** (no tiktoken). Token counts are `(n_chars + 3) //
 
 `repo.measure(path, start, end)` / `corpus.measure(...)` size a slice **without returning the body**. `repo.plan([{path, start, end}, ...])` reads each span, measures, drops bodies, and returns the same summary as `plan_reads`.
 
-`repo.ask` / `corpus.ask` use the same 24k cutoff: fit → `llm_query`, oversized → `rlm_query`. `repo.explore` / `corpus.explore` always spawn a child that **inherits** the same repo or corpus. Prefer `file_text` + `ast` / `ask` unless `n_child > 0`.
+`repo.ask` / `corpus.ask` use the same 24k cutoff: fit → `llm_query`, oversized → an automatically scoped `rlm_query` child for that selected span. The `{question, path, start, end}` form of `rlm_query` also derives a repo scope. Research in stages: run a small inventory cell, classify it with deterministic code, inspect selected spans, then render the report. `repo.explore` / `corpus.explore` accept explicit non-empty `targets`; untargeted exploration remains a legacy compatibility path.
 
 A cell's **last expression** is displayed like a notebook (compact repr). `FINAL` / `FINAL_VAR` as the last expression are not displayed. `print` of a large string is truncated in the container before it reaches the host.
 
@@ -64,11 +64,11 @@ Any of these ends the loop and becomes `Completion.response`:
 
 | Form | Behavior |
 |---|---|
-| `FINAL(text)` | Stores `str(text)` as the answer |
+| `FINAL(text)` | Stores a `str` as the answer; non-strings raise recoverable `TypeError` |
 | `FINAL_VAR("name")` or `FINAL_VAR(name)` | Looks up that name and `FINAL`s it. A bare identifier is quoted before exec. Raises `NameError` (with bound user names) if missing |
-| `answer["ready"] = True` with `answer["value"]` | Honored if `_rlm_final` was not set |
+| `answer["ready"] = True` with `answer["value"]` | Honored only when `value` is a string and `_rlm_final` was not set |
 
-`answer` starts as `{"ready": False, "value": None}`. Prefer `FINAL_VAR` so long answers never have to be printed.
+`answer` starts as `{"ready": False, "value": None}`. Dicts/lists are useful intermediate records, but render them first: `report_text = render_records(records); FINAL_VAR("report_text")`.
 
 ## Reserved names
 

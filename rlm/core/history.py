@@ -373,6 +373,7 @@ def route_read_subcall(
     rlm_fn,
     *,
     leaf_chars: int = ASK_LEAF_CHARS,
+    targets: list[dict] | None = None,
 ) -> str:
     """Leaf for tight slices; child RLM when the read would bloat a prompt."""
     n = len(text or "")
@@ -382,7 +383,8 @@ def route_read_subcall(
                 f"{question}\n\nTarget: {loc} ({n} chars). "
                 "The same repo/corpus is bound in your REPL. Grep/ast it there; "
                 "do not print the body. llm_query tight slices. "
-                "rlm_query again only if it is still too large. FINAL a short cited answer."
+                "rlm_query again only if it is still too large. FINAL a short cited answer.",
+                targets=targets,
             )
         )
     if llm_fn is None:

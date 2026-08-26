@@ -78,15 +78,36 @@ def test_rlm_query_in_repo_mode_child_sees_repo(tmp_path):
                 "ans = rlm_query('Grep AUTOCAST_CPU_BF16_IMPL_MARKER; FINAL the path')\n"
                 "FINAL(ans)\n"
             ),
-            repl(
-                "hits = repo.grep('AUTOCAST_CPU_BF16_IMPL_MARKER')\n"
-                "FINAL(hits[0].path)\n"
-            ),
+            repl("hits = repo.grep('AUTOCAST_CPU_BF16_IMPL_MARKER')\nFINAL(hits[0].path)\n"),
         ],
     )
     out = rlm.ask_repo(FIXTURE_REPO, "where?")
     assert "secret.py" in out.response
     assert out.usage.subcalls >= 1
+
+
+def test_path_dict_rlm_query_automatically_scopes_repo_child(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            repl(
+                "ans = rlm_query({'question': 'inspect the marker', "
+                "'path': 'src/deep/secret.py', 'start': 1, 'end': 20})\n"
+                "FINAL(ans)\n"
+            ),
+            repl(
+                "try:\n"
+                "    repo.read('src/utils.py')\n"
+                "except ValueError:\n"
+                "    pass\n"
+                "FINAL(repo.grep('AUTOCAST_CPU_BF16_IMPL_MARKER')[0].path)\n"
+            ),
+        ],
+    )
+    out = rlm.ask_repo(FIXTURE_REPO, "where?")
+    assert out.response == "src/deep/secret.py"
+    trace = (out.trajectory / "trace.jsonl").read_text(encoding="utf-8")
+    assert '"scoped": true' in trace or '"scoped":true' in trace
 
 
 def test_python_fence_is_executed(tmp_path):
@@ -101,11 +122,7 @@ def test_python_fence_is_executed(tmp_path):
 def test_bare_repl_header_is_executed(tmp_path):
     rlm, _ = make_rlm(
         tmp_path,
-        [
-            "repl\n"
-            "# Explore the repository\n"
-            "FINAL('from-bare-repl')\n"
-        ],
+        ["repl\n# Explore the repository\nFINAL('from-bare-repl')\n"],
     )
     out = rlm.completion("go", "context-" + "n" * 300)
     assert out.response == "from-bare-repl"
@@ -128,6 +145,21 @@ def test_parse_error_logs_model_preview(tmp_path):
     err = (out.trajectory / "error.txt").read_text(encoding="utf-8")
     assert "parse_error" in err
     assert "I refuse to use a fence." in err
+
+
+def test_non_string_final_is_a_repl_error_then_can_be_rendered(tmp_path):
+    rlm, _ = make_rlm(
+        tmp_path,
+        [
+            repl("records = [{'claim': 'grounded'}]\nFINAL_VAR(records)\n"),
+            repl("report_text = '- grounded'\nFINAL_VAR(report_text)\n"),
+        ],
+        max_consecutive_errors=2,
+    )
+    out = rlm.completion("go", "context-" + "n" * 300)
+    assert out.response == "- grounded"
+    events = (out.trajectory / "events.jsonl").read_text(encoding="utf-8")
+    assert "TypeError" in events
 
 
 def test_repl_errors_exhausted_writes_error_txt(tmp_path):

@@ -79,7 +79,9 @@ class SubcallHandler:
     def llm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
         raise NotImplementedError
 
-    def rlm_query(self, prompt: str, model: str | None = None) -> str:
+    def rlm_query(
+        self, prompt: str, model: str | None = None, *, targets: list[dict[str, Any]] | None = None
+    ) -> str:
         raise NotImplementedError
 
     def rlm_query_batched(self, prompts: list[str], model: str | None = None) -> list[str]:
@@ -134,6 +136,25 @@ def _coerce_rlm_prompt(who: str, prompt: Any) -> str:
         if have_q:
             return question
     return _require_prompt_str(who, prompt)
+
+
+def _derived_child_targets(prompt: Any, ns: dict[str, Any]) -> list[dict] | None:
+    """Infer a bounded child scope from the established dict convenience form."""
+    if not isinstance(prompt, dict):
+        return None
+    repo = ns.get("repo")
+    path = prompt.get("path") or prompt.get("file")
+    if repo is not None and isinstance(path, str):
+        return repo.normalize_targets(
+            [{"path": path, "start": prompt.get("start"), "end": prompt.get("end")}]
+        )
+    corpus = ns.get("corpus")
+    doc_id = prompt.get("id") or prompt.get("doc_id")
+    if corpus is not None and isinstance(doc_id, str):
+        return corpus.normalize_targets(
+            [{"id": doc_id, "start": prompt.get("start"), "end": prompt.get("end")}]
+        )
+    return None
 
 
 def create_namespace(
@@ -242,11 +263,17 @@ def create_namespace(
             return texts
         return handler.llm_query_batched(texts, model=model)
 
-    def rlm_query(prompt: str, model: str | None = None) -> str:
+    def rlm_query(
+        prompt: str, model: str | None = None, *, targets: list[dict[str, Any]] | None = None
+    ) -> str:
         text = _coerce_rlm_prompt("rlm_query", prompt)
         if text.startswith("Error:"):
             return text
-        return handler.rlm_query(text, model=model)
+        return handler.rlm_query(
+            text,
+            model=model,
+            targets=targets if targets is not None else _derived_child_targets(prompt, ns),
+        )
 
     def rlm_query_batched(prompts: list[str], model: str | None = None) -> list[str]:
         texts = [_coerce_rlm_prompt("rlm_query_batched", p) for p in prompts]
@@ -266,11 +293,17 @@ def create_namespace(
         return "\n".join(lines)
 
     def FINAL(text: Any) -> str:
-        ns["_rlm_final"] = str(text)
+        if not isinstance(text, str):
+            raise TypeError(
+                f"FINAL requires a str, got {type(text).__name__}. "
+                "Render structured records first, for example: "
+                'report_text = render_records(records); FINAL_VAR("report_text")'
+            )
+        ns["_rlm_final"] = text
         answer = ns.get("answer")
         if isinstance(answer, dict):
             answer["ready"] = True
-            answer["value"] = str(text)
+            answer["value"] = text
         return ns["_rlm_final"]
 
     def FINAL_VAR(name: str) -> str:
@@ -471,11 +504,28 @@ def run_cell(
     final = ns.get("_rlm_final")
     answer = ns.get("answer")
     if final is None and isinstance(answer, dict) and answer.get("ready"):
-        final = "" if answer.get("value") is None else str(answer.get("value"))
+        value = answer.get("value")
+        if not isinstance(value, str):
+            error = _format_cell_error(
+                TypeError(
+                    f"answer['value'] must be a str, got {type(value).__name__}. "
+                    "Render structured records first, for example: "
+                    'report_text = render_records(records); FINAL_VAR("report_text")'
+                )
+            )
+            stderr_full = buf_err.getvalue() + error + "\n"
+            return Observation(
+                stdout=stdout_full[:max_send_chars],
+                stderr=stderr_full[:max_send_chars],
+                total_stdout_len=len(stdout_full),
+                total_stderr_len=len(stderr_full),
+                sha256=sha256_text(stdout_full) if stdout_full else hashlib.sha256(b"").hexdigest(),
+                final=None,
+                error=error,
+            )
+        final = value
     if isinstance(final, str) and final == "":
         pass
-    elif final is not None:
-        final = str(final)
 
     stdout_send = stdout_full[:max_send_chars]
     stderr_send = stderr_full[:max_send_chars]

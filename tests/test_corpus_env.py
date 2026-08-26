@@ -69,17 +69,26 @@ def test_corpus_explore_spawns_child(tmp_path):
         tmp_path,
         [
             repl(
-                "ans = corpus.explore("
-                "'Search recursive inference; FINAL the doc id')\n"
-                "FINAL(ans)\n"
+                "ans = corpus.explore('Search recursive inference; FINAL the doc id')\nFINAL(ans)\n"
             ),
-            repl(
-                "hits = corpus.search('recursive inference')\n"
-                "FINAL(hits[0].doc_id)\n"
-            ),
+            repl("hits = corpus.search('recursive inference')\nFINAL(hits[0].doc_id)\n"),
         ],
     )
     out = rlm.research(FIXTURE_CORPUS, "Which doc?")
     assert out.response.startswith("doc-")
     assert out.usage.subcalls >= 1
     assert client.models[1] == "gpt-5"
+
+
+def test_scoped_corpus_restricts_documents_and_ranges():
+    corpus = load_corpus(FIXTURE_CORPUS)
+    doc_id = corpus.search("recursive inference")[0].doc_id
+    scoped = type(corpus)(corpus.docs, targets=[{"id": doc_id, "start": 0, "end": 120}])
+    assert scoped.search("recursive")
+    assert scoped.slice(doc_id, 0, 20)
+    import pytest
+
+    with pytest.raises(ValueError, match="target scope"):
+        scoped.slice(doc_id, 0, 200)
+    with pytest.raises(ValueError, match="target scope"):
+        scoped.get("doc-0002")

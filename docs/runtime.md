@@ -135,7 +135,7 @@ Exposed-method catalogs live in `rlm/prompts/catalog.py`.
 1. `child_depth = depth + 1`.
 2. If `child_depth > max_depth`: degrade to `llm_query` **only if** the prompt is under 100k; else return `Error: depth cap; slice smaller…`.
 3. Else spawn a new `Runtime` with `budget.inherit()`:
-   - **repo / research:** same workspace and domain. The prompt is the child's *query*. The child can grep/`ast` further. File bytes never enter the parent prompt.
+   - **repo / research:** same workspace and domain. A child with `targets` receives an enforced path/ID and span view for reads and searches; untargeted children retain the full-domain compatibility view. The prompt is the child's *query* and file bytes never enter the parent prompt.
    - **string:** the prompt is bound as `context` with a fixed child query (“Execute the task described in the `context` variable…”).
 4. Own container (product path) or own `FakeEnv` (tests). Each child clones `repo` / `corpus` so `_query_fn` is not shared across concurrent batches.
 5. Fold child spent USD / tokens / iterations / subcalls into the parent budget.

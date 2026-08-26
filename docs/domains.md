@@ -57,7 +57,7 @@ repo.file_text(path: str) -> str
 repo.measure(path: str, start: int | None = None, end: int | None = None) -> dict
 repo.plan(spans: list | dict | str) -> dict
 repo.ask(path: str, question: str, start: int | None = None, end: int | None = None) -> str
-repo.explore(question: str) -> str
+repo.explore(question: str, targets: list[dict] | None = None) -> str
 ```
 
 | Method | Behavior |
@@ -70,8 +70,8 @@ repo.explore(question: str) -> str
 | `file_text` | Full UTF-8 text as a **value**. Assign it; do not print it |
 | `measure` | `n_chars` / `n_tokens` / `route` (`fit` or `child`) for a span. No body. Optional `chunks` when oversized |
 | `plan` | `{n_fit, n_child, n_chunks, spans}` for path strings or `{path, start, end}` dicts |
-| `ask` | Slice under 24k chars (`ASK_LEAF_CHARS`) → `llm_query`; larger read → child RLM with the same repo |
-| `explore` | Always `rlm_query` with this repo. Use when `n_child > 0` and you cannot chunk into leaves |
+| `ask` | Slice under 24k chars (`ASK_LEAF_CHARS`) → `llm_query`; a larger read → child RLM automatically scoped to that path and requested line range |
+| `explore` | Child RLM for selected oversized spans. `targets=[{"path": p, "start": s, "end": e}]` enforces path/range access for reads and searches; empty, invalid, outside-root, and inverted targets fail before launch. Untargeted calls remain compatibility-only. |
 
 Paths are resolved under `repo.root`. Escaping the root raises `ValueError` (`Path.relative_to`).
 
@@ -149,10 +149,10 @@ corpus.slice(id: str, start: int, end: int) -> str   # Python character slice
 corpus.measure(doc_id: str, start: int | None = None, end: int | None = None) -> dict
 corpus.plan(spans: list | dict | str) -> dict
 corpus.ask(doc_id: str, question: str, start: int | None = None, end: int | None = None) -> str
-corpus.explore(question: str) -> str
+corpus.explore(question: str, targets: list[dict] | None = None) -> str
 ```
 
-`Document.text` is the full extracted string. Assign it; slice it; `llm_query` a piece. Do not print the whole document. `corpus.measure` / `corpus.plan` match `repo.measure` / `repo.plan` (sizes, no bodies; `n_fit` / `n_child`).
+`Document.text` is the full extracted string. Assign it; slice it; `llm_query` a piece. Oversized `corpus.ask` calls automatically scope their child to the selected ID and character range. Scoped exploration uses `targets=[{"id": doc_id, "start": s, "end": e}]`; the child can access only those IDs and character ranges. `corpus.measure` / `corpus.plan` match `repo.measure` / `repo.plan` (sizes, no bodies; `n_fit` / `n_child`).
 
 ### Intended patterns
 

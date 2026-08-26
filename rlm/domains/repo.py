@@ -233,13 +233,80 @@ def _coerce_int(value: int | str, name: str) -> int:
 
 
 class Repo:
-    def __init__(self, root: str | Path, ignore: Sequence[str] | None = None) -> None:
+    def __init__(
+        self,
+        root: str | Path,
+        ignore: Sequence[str] | None = None,
+        *,
+        targets: list[dict] | None = None,
+    ) -> None:
         self.root = Path(root).resolve()
         if not self.root.is_dir():
             raise FileNotFoundError(f"repo path does not exist: {self.root}")
         self.ignore = tuple(ignore or ())
         self._query_fn = None
         self._rlm_fn = None
+        self.targets = self.normalize_targets(targets) if targets is not None else None
+
+    def normalize_targets(self, targets: list[dict] | None) -> list[dict]:
+        """Validate a child target manifest without returning source content."""
+        if not isinstance(targets, list) or not targets:
+            raise ValueError("repo.explore targets must be a non-empty list of target records.")
+        normalized: list[dict] = []
+        for item in targets:
+            if not isinstance(item, dict) or set(item) - {"path", "start", "end"}:
+                raise ValueError("Each repository target must contain path, start, and end only.")
+            path = item.get("path")
+            if not isinstance(path, str) or not path.strip():
+                raise ValueError("Each repository target requires a non-empty path.")
+            target = self._safe(path)
+            if not target.is_file():
+                raise ValueError(f"Repository target is not a file: {path!r}.")
+            start, end = item.get("start"), item.get("end")
+            if start is not None and (
+                isinstance(start, bool) or not isinstance(start, int) or start < 1
+            ):
+                raise ValueError("Repository target start must be a positive line number or None.")
+            if end is not None and (isinstance(end, bool) or not isinstance(end, int) or end < 1):
+                raise ValueError("Repository target end must be a positive line number or None.")
+            if start is not None and end is not None and start > end:
+                raise ValueError("Repository target start must not exceed end.")
+            normalized.append({"path": self._rel(target), "start": start, "end": end})
+        return sorted(normalized, key=lambda x: (x["path"], x["start"] or 0, x["end"] or 0))
+
+    def _scope_ranges(self, path: str) -> list[tuple[int | None, int | None]] | None:
+        if self.targets is None:
+            return None
+        ranges = [(x["start"], x["end"]) for x in self.targets if x["path"] == path]
+        if not ranges:
+            raise ValueError(f"{path!r} is outside the declared repository target scope.")
+        return ranges
+
+    def _check_scope(self, path: str, start: int | None = None, end: int | None = None) -> None:
+        ranges = self._scope_ranges(path)
+        if ranges is None:
+            return
+        line_count = len(
+            self._safe(path).read_text(encoding="utf-8", errors="replace").splitlines()
+        )
+        requested_start = 1 if start is None else start
+        requested_end = line_count if end is None else end
+        if not any(
+            (lo is None or requested_start >= lo) and (hi is None or requested_end <= hi)
+            for lo, hi in ranges
+        ):
+            raise ValueError(
+                f"Requested span for {path!r} escapes the declared repository target scope."
+            )
+
+    def _check_glob_scope(self, pattern: str) -> None:
+        if self.targets is None:
+            return
+        scoped_paths = {item["path"] for item in self.targets}
+        for file in self._walk_files():
+            rel = self._rel(file)
+            if (fnmatch(rel, pattern) or fnmatch(file.name, pattern)) and rel not in scoped_paths:
+                raise ValueError("Requested glob escapes the declared repository target scope.")
 
     def _rel(self, path: Path) -> str:
         return path.resolve().relative_to(self.root).as_posix()
@@ -265,6 +332,16 @@ class Repo:
         ignore: Sequence[str] | None = None,
     ) -> str:
         extra = tuple(ignore) if ignore is not None else self.ignore
+        if self.targets is not None:
+            sub = None if path is None or _looks_int(path) else str(path).rstrip("/")
+            paths = [
+                x["path"]
+                for x in self.targets
+                if not sub or x["path"] == sub or x["path"].startswith(sub + "/")
+            ]
+            if not paths:
+                raise ValueError("Requested tree is outside the declared repository target scope.")
+            return "\n".join(sorted(set(paths)))
         sub: str | None = None
         if path is None:
             depth_limit = _coerce_int(max_depth, "max_depth")
@@ -285,9 +362,7 @@ class Repo:
             if depth > depth_limit:
                 return
             try:
-                entries = sorted(
-                    current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower())
-                )
+                entries = sorted(current.iterdir(), key=lambda p: (not p.is_dir(), p.name.lower()))
             except OSError:
                 return
             visible = []
@@ -310,15 +385,20 @@ class Repo:
         return "\n".join(lines)
 
     def glob(self, pattern: str) -> list[str]:
+        self._check_glob_scope(pattern)
         out: list[str] = []
         for file in self._walk_files():
             rel = self._rel(file)
+            if self.targets is not None and not any(x["path"] == rel for x in self.targets):
+                continue
             if fnmatch(rel, pattern) or fnmatch(file.name, pattern):
                 out.append(rel)
         return sorted(out)
 
     def file_text(self, path: str) -> str:
         target = self._safe(path)
+        rel = self._rel(target)
+        self._check_scope(rel)
         return target.read_text(encoding="utf-8", errors="replace")
 
     def read(
@@ -327,12 +407,17 @@ class Repo:
         start: int | str | None = None,
         end: int | str | None = None,
     ) -> str:
-        text = self.file_text(path)
+        target = self._safe(path)
+        rel = self._rel(target)
+        requested_start = None if start is None else _coerce_int(start, "start")
+        requested_end = None if end is None else _coerce_int(end, "end")
+        self._check_scope(rel, requested_start, requested_end)
+        text = target.read_text(encoding="utf-8", errors="replace")
         if start is None and end is None:
             return text
         lines = text.splitlines(keepends=True)
-        s = (1 if start is None else _coerce_int(start, "start")) - 1
-        e = len(lines) if end is None else _coerce_int(end, "end")
+        s = (1 if requested_start is None else requested_start) - 1
+        e = len(lines) if requested_end is None else requested_end
         s = max(0, s)
         e = min(len(lines), e)
         return "".join(lines[s:e])
@@ -350,7 +435,14 @@ class Repo:
             loc = path
         else:
             loc = f"{path}:{start or 1}-{end or 'end'}"
-        return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
+        target = {
+            "path": self._rel(self._safe(path)),
+            "start": None if start is None else _coerce_int(start, "start"),
+            "end": None if end is None else _coerce_int(end, "end"),
+        }
+        return route_read_subcall(
+            question, loc, text, self._query_fn, self._rlm_fn, targets=[target]
+        )
 
     def measure(
         self,
@@ -393,22 +485,25 @@ class Repo:
             rows.append(row)
         return plan_reads(rows)
 
-    def explore(self, question: str) -> str:
+    def explore(self, question: str, targets: list[dict] | None = None) -> str:
         """Spawn a child RLM with the same repo. Use only if ast/ask is not enough."""
         fn = self._rlm_fn
         if fn is None:
-            raise RuntimeError(
-                "repo.explore requires rlm_query. Call rlm_query(question) instead."
-            )
-        return str(fn(question))
+            raise RuntimeError("repo.explore requires rlm_query. Call rlm_query(question) instead.")
+        normalized = None if targets is None else self.normalize_targets(targets)
+        return str(fn(question, targets=normalized))
 
     def grep(self, pattern: str, glob: str | None = None) -> list[GrepHit]:
+        if glob is not None:
+            self._check_glob_scope(glob)
         rx = re.compile(pattern)
         hits: list[GrepHit] = []
         for file in self._walk_files():
             if not _looks_text(file):
                 continue
             rel = self._rel(file)
+            if self.targets is not None and not any(x["path"] == rel for x in self.targets):
+                continue
             if glob and not (fnmatch(rel, glob) or fnmatch(file.name, glob)):
                 continue
             try:
@@ -416,6 +511,12 @@ class Repo:
             except OSError:
                 continue
             for i, line in enumerate(text.splitlines(), start=1):
+                if self.targets is not None:
+                    ranges = self._scope_ranges(rel) or []
+                    if not any(
+                        (lo is None or i >= lo) and (hi is None or i <= hi) for lo, hi in ranges
+                    ):
+                        continue
                 if rx.search(line):
                     hits.append(GrepHit(path=rel, line_no=i, line=line[:400]))
         return hits
@@ -424,6 +525,10 @@ class Repo:
         out: list[FileMeta] = []
         for file in self._walk_files():
             if not _looks_text(file):
+                continue
+            if self.targets is not None and not any(
+                x["path"] == self._rel(file) for x in self.targets
+            ):
                 continue
             try:
                 data = file.read_bytes()
@@ -464,5 +569,7 @@ def repo_manifest(repo: Repo) -> str:
     )
 
 
-def load_repo(path: str | Path, ignore: Sequence[str] | None = None) -> Repo:
-    return Repo(path, ignore=ignore)
+def load_repo(
+    path: str | Path, ignore: Sequence[str] | None = None, *, targets: list[dict] | None = None
+) -> Repo:
+    return Repo(path, ignore=ignore, targets=targets)

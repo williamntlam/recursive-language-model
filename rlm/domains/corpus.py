@@ -138,17 +138,72 @@ def ingest_path(root: Path) -> list[Document]:
 
 
 class Corpus:
-    def __init__(self, docs: list[Document]) -> None:
+    def __init__(self, docs: list[Document], *, targets: list[dict] | None = None) -> None:
         self.docs = docs
         self._by_id = {d.id: d for d in docs}
         self._query_fn = None
         self._rlm_fn = None
+        self.targets = self.normalize_targets(targets) if targets is not None else None
+
+    def normalize_targets(self, targets: list[dict] | None) -> list[dict]:
+        if not isinstance(targets, list) or not targets:
+            raise ValueError("corpus.explore targets must be a non-empty list of target records.")
+        normalized: list[dict] = []
+        for item in targets:
+            if not isinstance(item, dict) or set(item) - {"id", "start", "end"}:
+                raise ValueError("Each corpus target must contain id, start, and end only.")
+            doc_id = item.get("id")
+            if not isinstance(doc_id, str) or doc_id not in self._by_id:
+                raise ValueError(f"Unknown corpus target id: {doc_id!r}.")
+            start, end = item.get("start"), item.get("end")
+            if start is not None and (
+                isinstance(start, bool) or not isinstance(start, int) or start < 0
+            ):
+                raise ValueError(
+                    "Corpus target start must be a non-negative character offset or None."
+                )
+            if end is not None and (isinstance(end, bool) or not isinstance(end, int) or end < 0):
+                raise ValueError(
+                    "Corpus target end must be a non-negative character offset or None."
+                )
+            if start is not None and end is not None and start > end:
+                raise ValueError("Corpus target start must not exceed end.")
+            normalized.append({"id": doc_id, "start": start, "end": end})
+        return sorted(normalized, key=lambda x: (x["id"], x["start"] or 0, x["end"] or 0))
+
+    def _check_scope(self, doc_id: str, start: int | None = None, end: int | None = None) -> None:
+        if self.targets is None:
+            return
+        ranges = [(x["start"], x["end"]) for x in self.targets if x["id"] == doc_id]
+        if not ranges:
+            raise ValueError(f"{doc_id!r} is outside the declared corpus target scope.")
+        doc = self._by_id[doc_id]
+        requested_start = 0 if start is None else start
+        requested_end = len(doc.text) if end is None else end
+        if not any(
+            (lo is None or requested_start >= lo) and (hi is None or requested_end <= hi)
+            for lo, hi in ranges
+        ):
+            raise ValueError(
+                f"Requested span for {doc_id!r} escapes the declared corpus target scope."
+            )
 
     def search(self, pattern: str) -> list[SearchHit]:
         rx = re.compile(pattern)
         hits: list[SearchHit] = []
         for doc in self.docs:
+            if self.targets is not None and not any(x["id"] == doc.id for x in self.targets):
+                continue
             for i, line in enumerate(doc.text.splitlines(), start=1):
+                if self.targets is not None:
+                    offset = sum(len(part) + 1 for part in doc.text.splitlines()[: i - 1])
+                    if not any(
+                        x["id"] == doc.id
+                        and (x["start"] is None or offset >= x["start"])
+                        and (x["end"] is None or offset < x["end"])
+                        for x in self.targets
+                    ):
+                        continue
                 if rx.search(line):
                     hits.append(SearchHit(doc_id=doc.id, line_no=i, snippet=line[:400]))
         return hits
@@ -156,10 +211,12 @@ class Corpus:
     def get(self, id: str) -> Document:  # noqa: A002
         if id not in self._by_id:
             raise KeyError(id)
+        self._check_scope(id)
         return self._by_id[id]
 
     def slice(self, id: str, start: int, end: int) -> str:  # noqa: A002
-        return self.get(id).text[start:end]
+        self._check_scope(id, start, end)
+        return self._by_id[id].text[start:end]
 
     def ask(
         self,
@@ -169,7 +226,8 @@ class Corpus:
         end: int | None = None,
     ) -> str:
         """Leaf if the slice is small; otherwise a child RLM with the same corpus."""
-        doc = self.get(doc_id)
+        self._check_scope(doc_id, start, end)
+        doc = self._by_id[doc_id]
         if start is None and end is None:
             text = doc.text
             loc = f"{doc_id} ({doc.path})"
@@ -178,7 +236,10 @@ class Corpus:
             e = len(doc.text) if end is None else end
             text = doc.text[s:e]
             loc = f"{doc_id}[{s}:{e}] ({doc.path})"
-        return route_read_subcall(question, loc, text, self._query_fn, self._rlm_fn)
+        target = {"id": doc_id, "start": start, "end": end}
+        return route_read_subcall(
+            question, loc, text, self._query_fn, self._rlm_fn, targets=[target]
+        )
 
     def measure(
         self,
@@ -187,7 +248,8 @@ class Corpus:
         end: int | None = None,
     ) -> dict:
         """n_chars / n_tokens / route for a document slice. Does not return the text."""
-        doc = self.get(doc_id)
+        self._check_scope(doc_id, start, end)
+        doc = self._by_id[doc_id]
         if start is None and end is None:
             text = doc.text
         else:
@@ -224,20 +286,20 @@ class Corpus:
             rows.append(row)
         return plan_reads(rows)
 
-    def explore(self, question: str) -> str:
+    def explore(self, question: str, targets: list[dict] | None = None) -> str:
         """Spawn a child RLM with the same corpus."""
         fn = self._rlm_fn
         if fn is None:
             raise RuntimeError(
                 "corpus.explore requires rlm_query. Call rlm_query(question) instead."
             )
-        return str(fn(question))
+        normalized = None if targets is None else self.normalize_targets(targets)
+        return str(fn(question, targets=normalized))
 
 
 def catalog_rows(corpus: Corpus) -> list[dict]:
     return [
-        {"id": d.id, "title": d.title, "path": d.path, "n_chars": d.n_chars}
-        for d in corpus.docs
+        {"id": d.id, "title": d.title, "path": d.path, "n_chars": d.n_chars} for d in corpus.docs
     ]
 
 

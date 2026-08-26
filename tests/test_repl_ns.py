@@ -186,6 +186,23 @@ def test_final_var_missing_name_lists_bindings():
     assert "invent" in err.lower() or "SHOW_VARS" in err
 
 
+def test_non_string_finals_are_recoverable_and_do_not_complete():
+    ns, snap = _ns()
+    for code in (
+        "FINAL({'a': 1})\n",
+        "records = [{'a': 1}]\nFINAL_VAR('records')\n",
+        "answer['ready'] = True\nanswer['value'] = {'a': 1}\n",
+    ):
+        obs = run_cell(ns, code, snap)
+        assert obs.final is None
+        assert obs.error
+        assert "str" in (obs.stderr or obs.error or "")
+        assert "report_text" in (obs.stderr or obs.error or "")
+    obs = run_cell(ns, "report_text = 'rendered report'\nFINAL_VAR(report_text)\n", snap)
+    assert obs.error is None
+    assert obs.final == "rendered report"
+
+
 def test_os_and_sys_are_normal_python():
     ns, snap = _ns()
     obs = run_cell(
