@@ -59,6 +59,10 @@ class Config:
     verbose: bool = False
     trace_capture: str = "metadata"
     extra_instructions: list[str] | None = None
+    planner_enabled: bool = False
+    planner_max_selected: int = 16
+    planner_max_leaf_calls: int = 16
+    planner_max_child_calls: int = 8
 
     def __post_init__(self) -> None:
         if self.environment not in ALLOWED_ENVIRONMENTS:
@@ -98,6 +102,9 @@ class Config:
             raise ConfigError("cell_timeout_s must be > 0")
         if self.trace_capture not in TRACE_CAPTURE_PROFILES:
             raise ConfigError("trace_capture must be 'metadata' or 'content'")
+        for name in ("planner_max_selected", "planner_max_leaf_calls", "planner_max_child_calls"):
+            if getattr(self, name) < 1:
+                raise ConfigError(f"{name} must be >= 1")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -161,6 +168,10 @@ _COERCE = {
     "verbose": _as_bool,
     "trace_capture": _as_str,
     "extra_instructions": _as_opt_str_list,
+    "planner_enabled": _as_bool,
+    "planner_max_selected": _as_int,
+    "planner_max_leaf_calls": _as_int,
+    "planner_max_child_calls": _as_int,
 }
 
 

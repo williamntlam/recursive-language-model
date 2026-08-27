@@ -24,6 +24,34 @@ Startup refusals:
 - Static system+metadata already `>= 100_000` tokens → `PromptBudgetError`.
 - Composed instructions `> max_instructions` → `InstructionBudgetError` (CLI exit 4).
 
+## Opt-in deterministic planning
+
+`ask` and `research` accept `--planner-enabled` (or `planner_enabled = true`).
+It is off by default; ordinary runs use the root-loop workflow above.
+
+Planning is an execution boundary, not a second unconstrained research agent:
+
+```
+deterministic metadata / AST / regex discovery
+    → capped ScopeManifest (records, routes, digest, truncation flags)
+    → planner JSON selects record IDs only
+    → runtime validates routes and limits
+    → fit record: bounded leaf; oversized record: target-enforced child
+    → compact cited findings
+    → source-free root renderer
+```
+
+The planner sees the question, compact manifest, budget summary, and schema;
+it never supplies paths, spans, code, models, or budget overrides. The runtime
+resolves its IDs. A `fit` record must use a leaf; an oversized record must use
+a scoped child. The final renderer receives only the resulting findings in a
+string context—no `repo`, `corpus`, or original workspace.
+
+Malformed or failed planner output falls back to the normal staged REPL, but
+the REPL is restricted to all records in the already-built manifest. It does
+not silently regain full-domain access. Planning events record only counts,
+route totals, digests, and truncation/cap metadata.
+
 ## Code extraction
 
 `extract_repl_code` matches ```` ```repl ```` first (closed or unclosed), then ```` ```python ```` / ```` ```py ````, then an unlabeled fence (skipping json/markdown/shell), then a bare `repl` / `python` heading. It returns the **last** matching labeled block. No executable cell → user reminder, `parse_error` with a text preview, and a consecutive-error tick.

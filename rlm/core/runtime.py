@@ -23,6 +23,7 @@ from rlm.core.history import (
     sha256_text,
 )
 from rlm.core.parse import extract_repl_code
+from rlm.core.planner import resolve_targets
 from rlm.core.prompt_guard import assert_sendable, count_instructions, count_tokens
 from rlm.core.types import Completion, Message, PromptPayload, Usage
 from rlm.errors import (
@@ -123,6 +124,8 @@ class Runtime:
         workspace: Path | None,
         mode: str,
         cleanup_workspace: bool = False,
+        planned_plan: Any | None = None,
+        scope_manifest: Any | None = None,
     ) -> Completion:
         # The logger creates the root span before environment construction. Nested
         # RLMs receive a run span under the invoking callback.
@@ -152,6 +155,34 @@ class Runtime:
         self._workspace = workspace
         self._bindings = bindings
         self._metadata = metadata
+        if planned_plan is not None and scope_manifest is not None:
+            findings = self.execute_planned_work(planned_plan, scope_manifest)
+            finding_text = "\n\n".join(findings)
+            # The renderer receives findings only, never a domain object or
+            # workspace that contains the original source material.
+            workspace, cleanup_workspace = workspace_for_string(finding_text)
+            bindings = {"query": query, "context": finding_text}
+            metadata = (
+                string_metadata(finding_text)
+                + "These are bounded findings from an approved plan. Render a concise, "
+                "cited final answer from them only; do not do further research.\n"
+            )
+            mode = "string"
+            self.domain = None
+            self.mode = mode
+            self._workspace = workspace
+            self._bindings = bindings
+            self._metadata = metadata
+            payload = self.compose_payload(query)
+            self.check_instruction_budget(payload)
+            hist = [
+                Message("system", payload.system_prompt),
+                Message("user", metadata + "\nUser query:\n" + query),
+            ]
+            if count_tokens(hist) >= 100_000:
+                raise PromptBudgetError(
+                    "Planned findings prompt is >= 100k tokens; refuse to start."
+                )
         try:
             env = self.env_factory(
                 bindings=bindings,
@@ -430,6 +461,68 @@ class Runtime:
                 started=self.run_started,
             )
         return Completion(response=answer, usage=usage, trajectory=self.logger.dir)
+
+    def execute_planned_work(self, plan: Any, manifest: Any) -> list[str]:
+        """Execute validated work items before the source-free render pass."""
+        targets = resolve_targets(plan, manifest)
+        started = time.perf_counter()
+        findings: list[str] = []
+        leaf_count = child_count = 0
+        records = {record.id: record for record in manifest.records}
+        for selection, target in zip(plan.selected, targets, strict=True):
+            record = records[selection.record_id]
+            citation = self._target_citation(target)
+            if selection.route == "leaf":
+                leaf_count += 1
+                prompt = (
+                    f"Question: {selection.question}\nEvidence citation: {citation}\n"
+                    "Answer only from this narrow evidence. State uncertainty if needed.\n\n"
+                    + self._target_text(target)
+                )
+                result = self.leaf_complete(prompt)
+            else:
+                child_count += 1
+                result = self.child_rlm(
+                    f"{selection.question}\nInspect only the enforced target and return a compact "
+                    f"evidence finding with citation {citation}.",
+                    targets=[target],
+                )
+            clean = str(result).strip()
+            if len(clean) > 4_000:
+                clean = clean[:4_000] + "\n...[finding truncated]"
+            findings.append(f"[{record.id} {citation}]\n{clean}")
+            self.logger.event(
+                kind="plan_execution_item",
+                record_digest=sha256_text(record.id)[:16],
+                target_digest=sha256_text(repr(target))[:16],
+                route=selection.route,
+                status="error" if clean.startswith("Error:") else "ok",
+            )
+        self.logger.event(
+            kind="plan_execution",
+            selected_count=len(targets),
+            leaf_count=leaf_count,
+            child_count=child_count,
+            elapsed_s=time.perf_counter() - started,
+            scope_digest=manifest.digest,
+        )
+        return findings
+
+    def _target_text(self, target: dict[str, Any]) -> str:
+        if self.mode == "repo":
+            repo = self._bindings["repo"]
+            return repo.read(target["path"], target.get("start"), target.get("end"))
+        corpus = self._bindings["corpus"]
+        doc = corpus.get(target["id"])
+        start = 0 if target.get("start") is None else target["start"]
+        end = len(doc.text) if target.get("end") is None else target["end"]
+        return corpus.slice(target["id"], start, end)
+
+    @staticmethod
+    def _target_citation(target: dict[str, Any]) -> str:
+        if "path" in target:
+            return f"{target['path']}:{target.get('start') or 1}-{target.get('end') or 'end'}"
+        return f"{target['id']}:{target.get('start') or 0}-{target.get('end') or 'end'}"
 
     def callback(
         self,

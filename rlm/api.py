@@ -9,11 +9,13 @@ from typing import Any
 from rlm.backends.openai import OpenAIClient
 from rlm.config import Config, load_config
 from rlm.core.history import sha256_text
+from rlm.core.planner import PlanValidationError, ResearchPlan, parse_plan, planner_messages
 from rlm.core.prompt_guard import count_instructions, count_tokens
 from rlm.core.runtime import Runtime, query_sha, string_metadata, workspace_for_string
 from rlm.core.types import Completion, Message, PromptPayload
-from rlm.domains.corpus import catalog_rows, corpus_manifest, load_corpus
+from rlm.domains.corpus import Corpus, catalog_rows, corpus_manifest, load_corpus
 from rlm.domains.repo import load_repo, repo_manifest
+from rlm.domains.scope import ScopeManifest, build_corpus_scope, build_repo_scope
 from rlm.errors import ConfigError, StartupError
 from rlm.logging.trajectory import TrajectoryLogger
 from rlm.prompts import compose_system_prompt, exposed_methods_for
@@ -63,6 +65,7 @@ class RLM:
         verbose: bool | None = None,
         trace_capture: str | None = None,
         extra_instructions: list[str] | None = None,
+        planner_enabled: bool | None = None,
         config_path: str | Path | None = None,
         _client: Any = None,
         _env_factory: Callable | None = None,
@@ -86,6 +89,7 @@ class RLM:
             verbose=verbose,
             trace_capture=trace_capture,
             extra_instructions=extra_instructions,
+            planner_enabled=planner_enabled,
         )
         self._client = _client
         self._env_factory = _env_factory
@@ -130,6 +134,66 @@ class RLM:
             domain=domain,
         )
 
+    def _plan(
+        self, query: str, manifest: ScopeManifest, logger: TrajectoryLogger
+    ) -> ResearchPlan | None:
+        """Run the optional source-free planner; invalid plans deliberately fall back."""
+        logger.event(
+            kind="scope_manifest",
+            domain=manifest.domain,
+            record_count=len(manifest.records),
+            truncated=manifest.truncated,
+            canonical_digest=manifest.digest,
+            caps=manifest.caps,
+        )
+        messages = planner_messages(
+            query,
+            manifest,
+            {
+                "max_selected": self.config.planner_max_selected,
+                "max_leaf_calls": self.config.planner_max_leaf_calls,
+                "max_child_calls": self.config.planner_max_child_calls,
+            },
+        )
+        try:
+            # Planner output is data, never injected into a REPL or executed.
+            if (
+                count_tokens(messages) >= 100_000
+                or count_tokens(messages) > self.config.max_prompt_tokens
+            ):
+                raise PlanValidationError("planner prompt exceeds the configured token limit")
+            response = self._client_or_openai().complete(messages, model=self.config.root_model)
+            plan = parse_plan(
+                response.text,
+                manifest,
+                max_selected=self.config.planner_max_selected,
+                max_leaf_calls=self.config.planner_max_leaf_calls,
+                max_child_calls=self.config.planner_max_child_calls,
+            )
+        except Exception as exc:
+            logger.event(
+                kind="planner",
+                enabled=True,
+                fallback=True,
+                validation="rejected",
+                error_type=type(exc).__name__,
+            )
+            return None
+        logger.event(
+            kind="planner",
+            enabled=True,
+            fallback=False,
+            validation="accepted",
+            schema_version=plan.version,
+            selected_count=len(plan.selected),
+            plan_digest=plan.digest,
+            route_counts={
+                "leaf": sum(x.route == "leaf" for x in plan.selected),
+                "child": sum(x.route == "child" for x in plan.selected),
+            },
+        )
+        return plan
+
     def completion(self, query: str, context: str) -> Completion:
         logger = self._logger(
             query,
@@ -154,8 +218,19 @@ class RLM:
         repo = load_repo(path)
         logger = self._logger(
             query,
-            {"domain": "repo", "repo": str(repo.root)},
+            {"domain": "repo", "repo_root_digest": sha256_text(str(repo.root))},
         )
+        scope = build_repo_scope(repo, query) if self.config.planner_enabled else None
+        plan = self._plan(query, scope, logger) if scope is not None else None
+        if scope is not None and plan is None and scope.records:
+            # Recover to the existing staged REPL, but retain the deterministic
+            # admissible-evidence boundary rather than reopening the whole repo.
+            repo = load_repo(path, targets=[dict(record.target) for record in scope.records])
+            logger.event(
+                kind="planner_fallback_scope",
+                record_count=len(scope.records),
+                scope_digest=scope.digest,
+            )
         bindings = {"query": query, "repo": repo, "manifest": repo_manifest(repo)}
         return self._runtime(logger, "repo").run(
             query=query,
@@ -164,6 +239,8 @@ class RLM:
             workspace=repo.root,
             mode="repo",
             cleanup_workspace=False,
+            planned_plan=plan,
+            scope_manifest=scope,
         )
 
     def research(self, path: str | Path, query: str) -> Completion:
@@ -172,6 +249,15 @@ class RLM:
             query,
             {"domain": "research", "n_docs": len(corpus.docs)},
         )
+        scope = build_corpus_scope(corpus, query) if self.config.planner_enabled else None
+        plan = self._plan(query, scope, logger) if scope is not None else None
+        if scope is not None and plan is None and scope.records:
+            corpus = Corpus(corpus.docs, targets=[dict(record.target) for record in scope.records])
+            logger.event(
+                kind="planner_fallback_scope",
+                record_count=len(scope.records),
+                scope_digest=scope.digest,
+            )
         catalog = catalog_rows(corpus)
         bindings = {
             "query": query,
@@ -188,6 +274,8 @@ class RLM:
             workspace=workspace,
             mode="research",
             cleanup_workspace=False,
+            planned_plan=plan,
+            scope_manifest=scope,
         )
 
     def dry_run(self, query: str, metadata: str, domain: str | None = None) -> str:

@@ -11,6 +11,9 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-27 16:29 EDT** — Implemented opt-in deterministic scope manifests
+  and constrained planning: validated plans now execute bounded leaf work or
+  target-enforced child RLMs before a source-free final rendering pass.
 - **2026-08-26 19:45 EDT** — Reference specification 008 for an explicitly
   capped semantic-sweep map-reduce command with per-unit LLM verdicts,
   metadata-only reduction, and coverage-aware artifacts.
@@ -45,6 +48,8 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Changed
 
+- **2026-08-27 16:29 EDT** — Planner failures now retain the deterministic
+  manifest scope for staged-REPL fallback rather than reopening the full domain.
 - **2026-08-25 17:56 EDT** — Made `plan_reads` reject unmeasured repository
   path dictionaries, clarified that path planning belongs to `repo.plan`, and
   documented safe handling of nullable AST source segments.

@@ -23,6 +23,7 @@ uv run rlm research ./papers -- "Where do these papers disagree?"
 uv run rlm complete --context-file haystack.txt -- "Find the needle."
 uv run rlm ask ./repo --max-budget 2.00 --leaf-model gpt-5-mini -- "..."
 uv run rlm ask ./repo --dry-run -- "preview only"
+uv run rlm ask ./repo --planner-enabled -- "Compare the selected implementations."
 uv run rlm ask ./repo --config ./rlm.yaml -- "..."
 ```
 
@@ -60,6 +61,7 @@ Shared by the root parser and every subcommand:
 | `--verbose` | `verbose` | Print iteration / code / truncated stdout to stderr |
 | `--config` | — | Explicit `*.toml` / `*.yaml` / `*.yml`. Skips cwd discovery |
 | `--dry-run` | — | Print system prompt + metadata + token/instruction counts. No API, no container |
+| `--planner-enabled` | `planner_enabled` | Opt in to deterministic scoping and constrained plan execution for `ask` / `research` |
 
 `--max-prompt-tokens 100000` or `--max-instructions 151` is a config error (exit `4`).
 
@@ -76,6 +78,10 @@ prompt_tokens=N instruction_count=M max_prompt_tokens=... max_instructions=...
 ```
 
 If the composed instruction count already exceeds the cap, it raises `ConfigError` (exit `4`) instead of printing.
+
+With `--planner-enabled`, dry-run additionally prints the scope-manifest record
+count and truncation flags plus the planner schema version, token count, and
+instruction count. It still makes no model request and starts no Docker container.
 
 ## Output
 

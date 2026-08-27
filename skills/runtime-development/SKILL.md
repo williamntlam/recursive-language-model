@@ -23,3 +23,9 @@ budgets, or data binding. Load `../testing/SKILL.md` for validation details.
 Preserve data locality: source bytes stay in the REPL/container, while model
 calls receive only metadata or a narrow slice. Prefer Python analysis over a
 model call when it can determine the answer.
+
+For planner-enabled work, treat the scope manifest as the admission boundary:
+the planner may select only IDs, while runtime code resolves targets and
+executes their fixed leaf/child route. Keep final rendering source-free (only
+compact findings), and make failed planning fall back to a manifest-restricted
+view rather than an unrestricted domain.

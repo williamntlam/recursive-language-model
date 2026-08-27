@@ -8,9 +8,12 @@ from pathlib import Path
 
 from rlm.api import RLM
 from rlm.config import HARD_MAX_INSTRUCTIONS, HARD_MAX_PROMPT_TOKENS
+from rlm.core.planner import planner_instruction_count, planner_messages
+from rlm.core.prompt_guard import count_tokens
 from rlm.core.runtime import string_metadata
 from rlm.domains.corpus import corpus_manifest, load_corpus
 from rlm.domains.repo import load_repo, repo_manifest
+from rlm.domains.scope import build_corpus_scope, build_repo_scope
 from rlm.envfile import load_dotenv
 from rlm.errors import (
     BudgetExhaustedError,
@@ -40,6 +43,7 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--trace-capture", choices=("metadata", "content"))
     common.add_argument("--config", dest="config_path")
     common.add_argument("--dry-run", action="store_true")
+    common.add_argument("--planner-enabled", action="store_true", default=None)
 
     p = argparse.ArgumentParser(
         prog="rlm",
@@ -144,13 +148,25 @@ def main(argv: list[str] | None = None) -> int:
             log_dir=args.log_dir,
             verbose=True if args.verbose else None,
             trace_capture=args.trace_capture,
+            planner_enabled=args.planner_enabled,
         )
         if args.cmd == "ask":
             repo = load_repo(args.path)
             metadata = repo_manifest(repo)
             domain = "repo"
             if args.dry_run:
-                print(rlm.dry_run(query, metadata, domain=domain))
+                output = rlm.dry_run(query, metadata, domain=domain)
+                if rlm.config.planner_enabled:
+                    scope = build_repo_scope(repo, query)
+                    planner = planner_messages(query, scope, {})
+                    output += (
+                        "\nplanner_enabled=true "
+                        f"schema_version={scope.version} "
+                        f"manifest_records={len(scope.records)} truncated={scope.truncated} "
+                        f"planner_prompt_tokens={count_tokens(planner)} "
+                        f"planner_instruction_count={planner_instruction_count(planner)}\n"
+                    )
+                print(output)
                 return 0
             out = rlm.ask_repo(args.path, query)
         elif args.cmd == "research":
@@ -158,7 +174,18 @@ def main(argv: list[str] | None = None) -> int:
             metadata = corpus_manifest(corpus)
             domain = "research"
             if args.dry_run:
-                print(rlm.dry_run(query, metadata, domain=domain))
+                output = rlm.dry_run(query, metadata, domain=domain)
+                if rlm.config.planner_enabled:
+                    scope = build_corpus_scope(corpus, query)
+                    planner = planner_messages(query, scope, {})
+                    output += (
+                        "\nplanner_enabled=true "
+                        f"schema_version={scope.version} "
+                        f"manifest_records={len(scope.records)} truncated={scope.truncated} "
+                        f"planner_prompt_tokens={count_tokens(planner)} "
+                        f"planner_instruction_count={planner_instruction_count(planner)}\n"
+                    )
+                print(output)
                 return 0
             out = rlm.research(args.path, query)
         else:

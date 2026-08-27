@@ -84,6 +84,17 @@ Depth is however many nested RLMs a **leftover oversized piece** needs, not a fa
 
 100k is a backstop. The **smart zone** is much smaller: parent in the low thousands, a typical function as one leaf.
 
+### Planned routing for large research
+
+For large `ask` and `research` jobs, `--planner-enabled` adds an optional
+deterministic scoper before recursion. It creates bounded records from paths,
+sizes, AST declarations, and corpus regex/offset metadata; source bodies are
+not in the manifest. A planner may choose only record IDs and their already
+valid route. The runtime, rather than the planner or root REPL, performs each
+leaf/child call and turns it into a compact cited finding. A separate root pass
+then renders from those findings only. This makes recursive splitting
+auditable and prevents an accepted plan from widening its source scope.
+
 ## Two products, one runtime
 
 | | `rlm ask <path>` | `rlm research <path>` | `rlm.completion` |

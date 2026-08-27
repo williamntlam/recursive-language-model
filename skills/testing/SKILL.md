@@ -27,3 +27,8 @@ uv run pytest -m docker
 ```
 
 Prefer invariants over exact model-output transcripts.
+
+For planned execution, test both routes with `FakeClient`: a fit record must
+consume a bounded leaf before final rendering, and an oversized record must
+launch a target-enforced child. Also assert the renderer bindings exclude the
+original repo/corpus and that planner fallback remains manifest-scoped.
