@@ -65,10 +65,14 @@ skip when the daemon is absent.
 ## Test strategy
 
 Prefer **invariants** over golden transcripts (transcripts churn with prompts).
+Follow the lightweight input/output and Arrange → Act → Assert conventions in
+[`tests/README.md`](../tests/README.md); they standardize observable contracts
+without forcing unrelated test types through one fixture or result wrapper.
 
 Helpers in `tests/util.py`:
 
-- `make_rlm(tmp_path, script, **kwargs)` — `FakeClient` + `FakeEnv`, log dir under `tmp_path`
+- `make_rlm(tmp_path, script, **kwargs)` — named `RLMHarness` with `FakeClient`
+  + `FakeEnv`, log dir under `tmp_path`; use `.rlm` / `.client` or tuple unpacking
 - `repl(code)` — wrap a cell in a `repl` fence
 - `FIXTURE_REPO`, `FIXTURE_CORPUS`
 

@@ -39,6 +39,12 @@ go in `tests/unit/`; workflows crossing RLM components, domains, CLI, logging,
 or Docker boundaries go in `tests/integration/`; Harbor harness checks go in
 `tests/harbor/`; and live-evaluation support stays in `tests/eval_support/`.
 
+Follow [`tests/README.md`](../../tests/README.md): arrange explicit inputs, act
+through the public boundary, and assert observable results or artifacts. Use
+`make_rlm` for scripted fake-runtime tests; its named `RLMHarness` exposes
+`.rlm` and `.client` while preserving tuple unpacking. Do not force pure unit,
+Docker, Harbor, and evaluation-support tests into one generic scenario type.
+
 Prefer invariants over exact model-output transcripts.
 
 For planned execution, test both routes with `FakeClient`: a fit record must

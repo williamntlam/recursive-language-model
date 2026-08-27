@@ -1,3 +1,5 @@
+"""Context-needle judge helper contracts."""
+
 from __future__ import annotations
 
 import pytest

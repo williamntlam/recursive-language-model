@@ -68,6 +68,9 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
   Docker, Harbor, and evaluation-support markers; organized product checks into
   unit, integration, Harbor, and evaluation-support folders; and made baseline
   checks independent of local dotenv, fixture-line, and socket permissions.
+- **2026-08-27 18:05 EDT** — Added shared test input/output conventions,
+  a named fake-runtime harness, and structural checks for test areas, module
+  descriptions, and behavior-oriented test names.
 - **2026-08-27 16:29 EDT** — Planner failures now retain the deterministic
   manifest scope for staged-REPL fallback rather than reopening the full domain.
 - **2026-08-25 17:56 EDT** — Made `plan_reads` reject unmeasured repository

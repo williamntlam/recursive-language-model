@@ -1,3 +1,5 @@
+"""Architecture-benchmark helper contracts."""
+
 import json
 
 import pytest
