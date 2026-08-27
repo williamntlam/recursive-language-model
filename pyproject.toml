@@ -35,7 +35,9 @@ dev = ["pytest>=8.3", "ruff>=0.6"]
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 markers = [
-    "docker: requires a running Docker daemon",
+    "docker: runs against a running Docker daemon",
+    "eval_support: validates opt-in evaluation cases, judges, or benchmark helpers",
+    "harbor: validates Harbor task assets and deterministic verifiers",
 ]
 
 [tool.ruff]

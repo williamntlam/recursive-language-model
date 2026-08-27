@@ -1,3 +1,5 @@
+"""REPL namespace unit contracts."""
+
 from rlm.core.history import compact_repr
 from rlm.repl_ns import (
     SubcallHandler,

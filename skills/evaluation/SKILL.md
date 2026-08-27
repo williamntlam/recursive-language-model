@@ -53,8 +53,10 @@ must contain at least:
   warrants the cost.
 - Report agent results from multiple attempts, with the task revision, agent
   adapter/version, model, attempt count, individual rewards, and aggregate.
-- Keep fast deterministic verifier and task-layout tests in `tests/`; agent
-  benchmarks are the integration layer, not a replacement for unit tests.
+- Keep fast deterministic verifier and task-layout tests in `tests/` with the
+  `harbor` marker. Put deterministic legacy-judge/case/benchmark-helper tests
+  in `tests/eval_support/` with the `eval_support` marker. Agent benchmarks are
+  the integration layer, not a replacement for unit tests.
 
 See [`../../evals/harbor/README.md`](../../evals/harbor/README.md) and
 [`../../.spec/003-harbor-readonly-evaluations/spec.md`](../../.spec/003-harbor-readonly-evaluations/spec.md)

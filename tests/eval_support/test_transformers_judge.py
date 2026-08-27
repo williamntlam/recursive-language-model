@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from evals.transformers_causal_lm_judge import cited_snippets, validate_judgment
+
+pytestmark = pytest.mark.eval_support
 
 
 def test_cited_snippets_reads_only_valid_bounded_repo_paths(tmp_path):

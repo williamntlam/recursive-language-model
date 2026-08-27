@@ -4,6 +4,8 @@ import pytest
 
 from tests.architecture_benchmark import Case, citation_metrics, load_cases
 
+pytestmark = pytest.mark.eval_support
+
 
 def test_architecture_benchmark_cases_cover_every_size_band():
     cases = load_cases()

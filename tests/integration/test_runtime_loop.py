@@ -1,3 +1,5 @@
+"""Runtime-loop integration contracts."""
+
 import json
 
 import pytest

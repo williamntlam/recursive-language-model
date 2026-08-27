@@ -1,3 +1,5 @@
+"""Prompt and instruction budget unit contracts."""
+
 import pytest
 import tiktoken
 
@@ -76,6 +78,7 @@ def test_prompt_files_plus_builtins_under_150():
 
 def test_openai_client_requires_key(monkeypatch):
     monkeypatch.delenv("OPENAI_API_KEY", raising=False)
+    monkeypatch.setattr("rlm.backends.openai.load_dotenv", lambda: None)
     with pytest.raises(StartupError, match="OPENAI_API_KEY"):
         OpenAIClient()
 

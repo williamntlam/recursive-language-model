@@ -1,6 +1,10 @@
 from __future__ import annotations
 
+import pytest
+
 from evals.context_needle_judge import ladder_cases, load_case, validate_judgment
+
+pytestmark = pytest.mark.eval_support
 
 
 def test_context_needle_ladder_increases_to_half_million_tokens():

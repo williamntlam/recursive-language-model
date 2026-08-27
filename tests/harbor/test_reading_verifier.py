@@ -1,4 +1,4 @@
-"""Fast deterministic checks for the read-only Harbor task verifier."""
+"""Fast deterministic contracts for the read-only Harbor task verifier."""
 
 from __future__ import annotations
 
@@ -6,6 +6,10 @@ import os
 import subprocess
 import sys
 from pathlib import Path
+
+import pytest
+
+pytestmark = pytest.mark.harbor
 
 ROOT = Path(__file__).resolve().parents[2]
 VERIFIER = ROOT / "evals/harbor/rlm-reading-contracts/tests/verify_answer.py"

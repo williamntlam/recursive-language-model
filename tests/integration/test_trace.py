@@ -1,3 +1,5 @@
+"""Trajectory tracing integration contracts."""
+
 import json
 
 from rlm.cli import main

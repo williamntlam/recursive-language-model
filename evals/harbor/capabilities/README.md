@@ -3,7 +3,7 @@
 The Harbor tasks are the integration layer: they measure whether an autonomous
 agent can read source material and produce a grounded answer. This directory
 describes the complementary deterministic layer, implemented in
-[`tests/capabilities`](../../../tests/capabilities).
+[`tests/harbor`](../../../tests/harbor).
 
 The current checks target the boundaries this read-only harness owns:
 
@@ -14,7 +14,7 @@ The current checks target the boundaries this read-only harness owns:
 Run these on every change to a task or verifier:
 
 ```bash
-uv run pytest tests/capabilities tests/test_harbor_tasks.py
+uv run pytest -m harbor
 ```
 
 Add harness-specific tests for tool selection, memory, or other Deep Agents

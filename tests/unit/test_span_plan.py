@@ -1,3 +1,5 @@
+"""Bounded read-planning unit contracts."""
+
 from rlm.core.history import (
     ASK_LEAF_CHARS,
     estimate_tokens,

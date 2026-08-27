@@ -1,3 +1,5 @@
+"""Corpus workflow integration contracts."""
+
 from rlm.domains.corpus import load_corpus
 from tests.util import FIXTURE_CORPUS, make_rlm, repl
 

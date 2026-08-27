@@ -1,3 +1,5 @@
+"""Trajectory-report integration contracts."""
+
 import json
 from pathlib import Path
 

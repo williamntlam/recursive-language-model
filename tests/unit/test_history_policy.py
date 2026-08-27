@@ -1,3 +1,5 @@
+"""History and response-parsing unit contracts."""
+
 from rlm.core.parse import extract_repl_code
 from tests.util import hist_text, make_rlm, repl
 

@@ -64,5 +64,5 @@ cost ratio before the dataset is large enough to measure one.
 
 [`capabilities/README.md`](capabilities/README.md) describes the accompanying
 fast deterministic capability layer. Run it independently of Harbor during
-development; it checks verifier/file-output behavior rather than measuring an
-agent's end-to-end task completion.
+development with `uv run pytest -m harbor`; it checks verifier/file-output
+behavior rather than measuring an agent's end-to-end task completion.

@@ -9,7 +9,7 @@ writes only its requested answer artifact.
 Run task-structure and deterministic capability checks during development:
 
 ```bash
-uv run pytest tests/test_harbor_tasks.py tests/capabilities
+uv run pytest -m harbor
 ```
 
 Use the frozen `harbor/suites/lite.txt` list for fast iteration and

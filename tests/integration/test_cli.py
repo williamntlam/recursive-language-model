@@ -1,3 +1,5 @@
+"""CLI integration contracts."""
+
 from rlm.cli import main
 from tests.util import FIXTURE_REPO
 

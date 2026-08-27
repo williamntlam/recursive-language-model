@@ -1,3 +1,5 @@
+"""OpenAI response-text extraction unit contracts."""
+
 from types import SimpleNamespace
 
 from rlm.backends.openai import responses_text

@@ -79,13 +79,26 @@ nondeterministic even when the task environment and verifier are deterministic.
 Run fast task and verifier checks on every Harbor-task change:
 
 ```bash
-uv run pytest tests/test_harbor_tasks.py tests/capabilities
-uv run ruff check evals/harbor tests/test_harbor_tasks.py tests/capabilities
+uv run pytest -m harbor
+uv run ruff check evals/harbor tests/harbor
 ```
 
 These checks cover task layout, the read-only source contract, reward-file
 output, and accepted/rejected answer artifacts. They are the unit-test layer;
 Harbor trials are the integration-test layer.
+
+## Test taxonomy
+
+The ordinary pytest suite has three explicit non-product markers:
+
+- `docker` starts a real RLM container and skips without a daemon.
+- `eval_support` checks case schemas and judge/benchmark helpers without a live model call.
+- `harbor` checks Harbor task assets and deterministic verifier behavior.
+
+Use `uv run pytest -m "not docker and not eval_support and not harbor"` for the
+fast RLM product-contract gate. A Harbor run is still required to measure an
+autonomous agent's end-to-end task completion; these pytest checks only verify
+the deterministic task harness.
 
 ## Change tracking
 

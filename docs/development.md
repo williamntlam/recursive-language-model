@@ -21,6 +21,10 @@ recursive-language-model/
 │   └── repl_server.py             # in-container cell runner + LM RPC client
 ├── rlm/                           # installable package
 ├── tests/
+│   ├── unit/                      # focused deterministic contracts
+│   ├── integration/               # multi-component and Docker-boundary workflows
+│   ├── harbor/                    # deterministic Harbor task/verifier checks
+│   ├── eval_support/              # deterministic checks for opt-in eval tooling
 │   ├── fixtures/small_repo/
 │   └── fixtures/tiny_corpus/
 ├── examples/
@@ -36,10 +40,14 @@ Python 3.12+, uv, Ruff (`line-length = 100`, `E,F,I,UP,W`), pytest.
 
 ```bash
 uv sync --group dev
+# Product contracts only; no Docker, eval-support, or Harbor task checks.
+uv run pytest -m "not docker and not eval_support and not harbor"
+# All deterministic checks.
 uv run pytest
 uv run ruff check rlm tests
 uv run rlm --help
-uv run pytest tests/test_harbor_tasks.py tests/capabilities
+uv run pytest -m harbor
+uv run pytest -m eval_support
 ```
 
 Optional PDF extra: `uv sync --extra pdf`.
@@ -50,7 +58,9 @@ Docker tests:
 uv run pytest -m docker
 ```
 
-The `docker` marker is registered in `pyproject.toml`. Those tests skip when the daemon is absent.
+The `docker`, `eval_support`, and `harbor` markers are registered in
+`pyproject.toml`. Docker marks only tests that start a container; those tests
+skip when the daemon is absent.
 
 ## Test strategy
 
@@ -68,16 +78,10 @@ Invariants covered today:
 
 | Test module | What it locks |
 |---|---|
-| `test_history_policy.py` | Bound context does not leak into `hist` |
-| `test_prompt_guard.py` | Never send ≥100k tokens or >150 instructions; static prompts fit; ceilings not raisable |
-| `test_config.py` | TOML ↔ YAML equivalence; both-present error; auth keys rejected |
-| `test_runtime_loop.py` | Reserved names restored; batch alignment; budget inheritance; `rlm_query` child |
-| `test_cli.py` | `--help`; `--dry-run` without Docker |
-| `test_repo_env.py` | Ignore rules, grep/read, path safety, `ask` leaf vs child (24k chars) |
-| `test_span_plan.py` | `measure` / `measure_ast` / `plan_reads`; `n_child == 0` for small forwards |
-| `test_corpus_env.py` | Ingest, search/slice, distractors |
-| `test_docker_repl.py` | Marked: no key in container, no public net, mount works |
-| `test_report.py` | Static `report.html`; XSS escaped; `rlm report` |
+| `unit/` | Prompt/history/config/REPL/read-planning contracts |
+| `integration/` | CLI, repository/corpus, runtime, tracing, reports, and Docker boundary workflows |
+| `eval_support/` | Cases and helpers for opt-in judges and architecture benchmarks; no live calls |
+| `harbor/` | Harbor task layout and deterministic verifier behavior |
 
 ## Fixtures
 
@@ -107,14 +111,14 @@ the agent inspects a source snapshot and writes an answer artifact, while the
 Harbor verifier awards a deterministic numeric reward. Install Harbor with
 `uv tool install harbor`; local runs need Docker and an agent adapter.
 
-`tests/test_harbor_tasks.py` and `tests/capabilities/` are the fast
-deterministic checks for that task dataset. They run in ordinary pytest and do
-not require Docker, an API key, or an agent.
+`tests/harbor/` contains the fast deterministic checks for that task dataset.
+They run in ordinary pytest and do not require Docker, an API key, or an agent.
 
 The source-grounded Transformers census and synthetic 8k–500k retrieval ladder
-remain legacy, opt-in RLM development utilities. These commands can use Docker
-and OpenAI API budget, so they are deliberately excluded from pytest and must
-be run explicitly.
+remain legacy, opt-in RLM development utilities. Their deterministic case and
+judge-helper checks live in `tests/eval_support/` and are marked
+`eval_support`; only the live runners require Docker and OpenAI API budget and
+must be run explicitly.
 
 The judge results are written to gitignored `evals/results/`. For rubric,
 evidence, and expansion guidance, see

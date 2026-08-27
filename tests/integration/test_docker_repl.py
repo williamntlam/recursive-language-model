@@ -1,8 +1,9 @@
-"""Docker REPL tests. Skipped when the daemon is absent."""
+"""Docker REPL integration contracts, with isolated IPC unit checks."""
 
 from __future__ import annotations
 
 import inspect
+import json
 import time
 
 import pytest
@@ -11,8 +12,6 @@ from rlm.api import RLM
 from rlm.backends.base import FakeClient
 from rlm.errors import StartupError
 from tests.util import repl
-
-pytestmark = pytest.mark.docker
 
 
 def docker_available() -> bool:
@@ -71,10 +70,7 @@ def test_host_exec_timeout_blocks_when_session_is_unlimited():
 
 
 def test_serve_request_swallows_broken_pipe(tmp_path):
-    import socket
-
     from rlm.environments.docker import CallbackServer
-    from rlm.ipc import write_msg
     from rlm.repl_ns import SubcallHandler
 
     class H(SubcallHandler):
@@ -90,18 +86,29 @@ def test_serve_request_swallows_broken_pipe(tmp_path):
         def rlm_query_batched(self, prompts, model=None):
             return ["child"] * len(prompts)
 
-    host, peer = socket.socketpair()
-    try:
-        write_msg(peer, {"type": "llm_query", "prompt": "hi"})
-        peer.close()
-        CallbackServer(tmp_path / "lm.sock", H())._serve_request(host)
-    finally:
-        try:
-            host.close()
-        except OSError:
-            pass
+    class BrokenPipeStream:
+        def __init__(self):
+            payload = json.dumps({"type": "llm_query", "prompt": "hi"}).encode()
+            self._input = bytearray(len(payload).to_bytes(4, "big") + payload)
+            self.closed = False
+
+        def recv(self, n):
+            chunk = bytes(self._input[:n])
+            del self._input[:n]
+            return chunk
+
+        def sendall(self, data):  # noqa: ARG002
+            raise BrokenPipeError()
+
+        def close(self):
+            self.closed = True
+
+    stream = BrokenPipeStream()
+    CallbackServer(tmp_path / "lm.sock", H())._serve_request(stream)
+    assert stream.closed
 
 
+@pytest.mark.docker
 @requires_docker
 def test_container_has_no_key_no_internet_and_context_is_mounted(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-should-not-enter-container")
@@ -154,6 +161,7 @@ def test_container_has_no_key_no_internet_and_context_is_mounted(tmp_path, monke
         env.close()
 
 
+@pytest.mark.docker
 @requires_docker
 def test_container_init_preserves_repo_target_scope(tmp_path):
     from rlm.environments.docker import DockerEnv
@@ -194,6 +202,7 @@ def test_container_init_preserves_repo_target_scope(tmp_path):
         env.close()
 
 
+@pytest.mark.docker
 @requires_docker
 def test_rlm_query_can_outlive_cell_cpu_timeout(tmp_path):
     """Nested host callbacks must not be killed by the cell CPU SIGALRM."""
@@ -232,6 +241,7 @@ def test_rlm_query_can_outlive_cell_cpu_timeout(tmp_path):
         env.close()
 
 
+@pytest.mark.docker
 @requires_docker
 def test_docker_completion_with_fake_client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-should-not-enter-container")

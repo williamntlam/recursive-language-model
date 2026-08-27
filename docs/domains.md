@@ -171,4 +171,4 @@ System prompt = `rlm/prompts/root.md` plus one of:
 - `rlm/prompts/repo.md`
 - `rlm/prompts/research.md`
 
-Leaves always use `rlm/prompts/leaf.md`. Authoring budget: generic ≤ 40 instruction units, one domain ≤ 30, user query ≤ 20, composed **≤ 150**. CI counts this (`tests/test_prompt_guard.py`).
+Leaves always use `rlm/prompts/leaf.md`. Authoring budget: generic ≤ 40 instruction units, one domain ≤ 30, user query ≤ 20, composed **≤ 150**. CI counts this (`tests/unit/test_prompt_guard.py`).

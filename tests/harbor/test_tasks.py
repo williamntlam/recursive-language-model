@@ -1,11 +1,15 @@
-"""Static contracts for the local Harbor read-only evaluation dataset."""
+"""Static Harbor-task contracts for the local read-only evaluation dataset."""
 
 from __future__ import annotations
 
 import tomllib
 from pathlib import Path
 
-ROOT = Path(__file__).resolve().parents[1]
+import pytest
+
+pytestmark = pytest.mark.harbor
+
+ROOT = Path(__file__).resolve().parents[2]
 TASKS_ROOT = ROOT / "evals" / "harbor"
 
 

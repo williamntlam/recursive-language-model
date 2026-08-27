@@ -202,10 +202,18 @@ Full docs live in [`docs/`](docs/README.md):
 ## Tests
 
 ```bash
+# Fast product-contract gate (no Docker or evaluation tooling).
+uv run pytest -m "not docker and not eval_support and not harbor"
+
+# All deterministic checks, including Harbor verifier and eval-support checks.
 uv run pytest
+
+# Daemon-backed RLM container checks.
+uv run pytest -m docker
 ```
 
-Docker tests are skipped when the daemon is absent (`pytest -m docker` to select them).
+See [Development](docs/development.md) for the marker taxonomy. Docker tests
+are skipped when the daemon is absent.
 
 For the read-only Harbor agent benchmark task and its deterministic verifier
 checks, see [Evaluations](docs/evaluations.md). Repository changes are tracked

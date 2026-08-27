@@ -1,3 +1,5 @@
+"""Scoped planned-execution integration contracts."""
+
 import json
 
 import pytest

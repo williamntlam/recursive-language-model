@@ -1,3 +1,5 @@
+"""Repository workflow integration contracts."""
+
 from rlm.domains.repo import load_repo
 from tests.util import FIXTURE_REPO, make_rlm, repl
 
@@ -18,7 +20,7 @@ def test_tree_accepts_subdirectory_and_string_depth():
     scoped = repo.tree("src")
     assert "deep" in scoped or "secret" in scoped
     assert "node_modules" not in scoped
-    line = repo.read("src/deep/secret.py", "1", "4")
+    line = repo.read("src/deep/secret.py", "1", "5")
     assert "AUTOCAST_CPU_BF16_IMPL_MARKER" in line
 
 

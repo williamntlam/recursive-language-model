@@ -14,7 +14,10 @@ Run the smallest relevant module first, then the full suite for changes that
 cross runtime boundaries:
 
 ```bash
-uv run pytest tests/test_<area>.py
+uv run pytest tests/unit/test_<area>.py
+uv run pytest tests/integration/test_<area>.py
+# Fast RLM product contracts (excludes optional boundaries and eval tooling).
+uv run pytest -m "not docker and not eval_support and not harbor"
 uv run pytest
 uv run ruff check rlm tests
 ```
@@ -25,6 +28,16 @@ Docker tests are separate and require a running daemon:
 ```bash
 uv run pytest -m docker
 ```
+
+Use `eval_support` for deterministic tests of opt-in judge, case, or benchmark
+helpers; never make a live model call from pytest. Use `harbor` for deterministic
+Harbor task-layout/verifier checks. Harbor runs themselves are repeated
+autonomous-agent integration benchmarks, not pytest tests.
+
+Test placement follows the behavior under test: focused deterministic contracts
+go in `tests/unit/`; workflows crossing RLM components, domains, CLI, logging,
+or Docker boundaries go in `tests/integration/`; Harbor harness checks go in
+`tests/harbor/`; and live-evaluation support stays in `tests/eval_support/`.
 
 Prefer invariants over exact model-output transcripts.
 
