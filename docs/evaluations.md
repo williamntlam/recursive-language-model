@@ -12,6 +12,12 @@ The Harbor task evaluates read-only source analysis. It does not turn RLM into
 a coding agent and does not replace the legacy judges until equivalent Harbor
 tasks exist.
 
+For an opt-in, operational comparison of the direct REPL and planned-execution
+architectures, use [`tests/architecture_benchmark.py`](../tests/architecture_benchmark.py).
+It is a development runner rather than a Harbor score: it records paired trial
+metrics and citation validity for the versioned small/medium/large cases. See
+the [architecture benchmark playbook](tests.md) for invocation and interpretation.
+
 ## Harbor task format
 
 Every Harbor task is self-contained:

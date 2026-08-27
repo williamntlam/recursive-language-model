@@ -129,3 +129,15 @@ def test_cell_timeout_from_file(tmp_path: Path):
 def test_cell_timeout_must_be_positive():
     with pytest.raises(ConfigError, match="cell_timeout_s"):
         Config(cell_timeout_s=0)
+
+
+def test_architecture_selects_planned_and_preserves_planner_alias():
+    cfg = Config(architecture="planned")
+    assert cfg.architecture == "planned"
+    assert cfg.planner_enabled is True
+    assert Config(planner_enabled=True).architecture == "planned"
+
+
+def test_unknown_architecture_is_rejected():
+    with pytest.raises(ConfigError, match="architecture"):
+        Config(architecture="unbounded")

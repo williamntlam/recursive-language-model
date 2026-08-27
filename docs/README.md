@@ -23,6 +23,7 @@ Paper: Zhang, Kraska, Khattab, [*Recursive Language Models*](https://arxiv.org/a
 | [Execution tracing](tracing.md) | Causal JSONL traces, summaries, capture profiles, and local trace index |
 | [Development](development.md) | Layout, tests, fixtures, evals |
 | [Evaluations](evaluations.md) | Harbor agent tasks, repeated trials, suites, capability checks, and legacy judges |
+| [Architecture benchmark playbook](tests.md) | Executable direct-vs-planned trials by source-evidence size, prompts, and trajectory checks |
 | [Transformers judge eval](transformers-judge.md) | Source-grounded Transformers census, LLM judge, and long-context ladder |
 | [Module reference](module-reference.md) | Package map and important types |
 

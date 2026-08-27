@@ -8,6 +8,7 @@ from typing import Any
 
 from rlm.backends.openai import OpenAIClient
 from rlm.config import Config, load_config
+from rlm.core.architecture import get_architecture
 from rlm.core.history import sha256_text
 from rlm.core.planner import PlanValidationError, ResearchPlan, parse_plan, planner_messages
 from rlm.core.prompt_guard import count_instructions, count_tokens
@@ -65,6 +66,7 @@ class RLM:
         verbose: bool | None = None,
         trace_capture: str | None = None,
         extra_instructions: list[str] | None = None,
+        architecture: str | None = None,
         planner_enabled: bool | None = None,
         config_path: str | Path | None = None,
         _client: Any = None,
@@ -89,6 +91,7 @@ class RLM:
             verbose=verbose,
             trace_capture=trace_capture,
             extra_instructions=extra_instructions,
+            architecture=architecture,
             planner_enabled=planner_enabled,
         )
         self._client = _client
@@ -119,6 +122,7 @@ class RLM:
                 "max_prompt_tokens": self.config.max_prompt_tokens,
                 "max_instructions": self.config.max_instructions,
                 "max_depth": self.config.max_depth,
+                "architecture": self.config.architecture,
                 "trace_capture": self.config.trace_capture,
                 **extra,
             },
@@ -220,16 +224,21 @@ class RLM:
             query,
             {"domain": "repo", "repo_root_digest": sha256_text(str(repo.root))},
         )
-        scope = build_repo_scope(repo, query) if self.config.planner_enabled else None
-        plan = self._plan(query, scope, logger) if scope is not None else None
-        if scope is not None and plan is None and scope.records:
+        prepared = get_architecture(self.config.architecture).prepare(
+            query,
+            repo,
+            logger,
+            build_scope=build_repo_scope,
+            plan_scope=self._plan,
+        )
+        if prepared.fallback_targets:
             # Recover to the existing staged REPL, but retain the deterministic
             # admissible-evidence boundary rather than reopening the whole repo.
-            repo = load_repo(path, targets=[dict(record.target) for record in scope.records])
+            repo = load_repo(path, targets=list(prepared.fallback_targets))
             logger.event(
                 kind="planner_fallback_scope",
-                record_count=len(scope.records),
-                scope_digest=scope.digest,
+                record_count=len(prepared.fallback_targets),
+                scope_digest=prepared.scope.digest if prepared.scope is not None else None,
             )
         bindings = {"query": query, "repo": repo, "manifest": repo_manifest(repo)}
         return self._runtime(logger, "repo").run(
@@ -239,8 +248,8 @@ class RLM:
             workspace=repo.root,
             mode="repo",
             cleanup_workspace=False,
-            planned_plan=plan,
-            scope_manifest=scope,
+            planned_plan=prepared.plan,
+            scope_manifest=prepared.scope,
         )
 
     def research(self, path: str | Path, query: str) -> Completion:
@@ -249,14 +258,19 @@ class RLM:
             query,
             {"domain": "research", "n_docs": len(corpus.docs)},
         )
-        scope = build_corpus_scope(corpus, query) if self.config.planner_enabled else None
-        plan = self._plan(query, scope, logger) if scope is not None else None
-        if scope is not None and plan is None and scope.records:
-            corpus = Corpus(corpus.docs, targets=[dict(record.target) for record in scope.records])
+        prepared = get_architecture(self.config.architecture).prepare(
+            query,
+            corpus,
+            logger,
+            build_scope=build_corpus_scope,
+            plan_scope=self._plan,
+        )
+        if prepared.fallback_targets:
+            corpus = Corpus(corpus.docs, targets=list(prepared.fallback_targets))
             logger.event(
                 kind="planner_fallback_scope",
-                record_count=len(scope.records),
-                scope_digest=scope.digest,
+                record_count=len(prepared.fallback_targets),
+                scope_digest=prepared.scope.digest if prepared.scope is not None else None,
             )
         catalog = catalog_rows(corpus)
         bindings = {
@@ -274,8 +288,8 @@ class RLM:
             workspace=workspace,
             mode="research",
             cleanup_workspace=False,
-            planned_plan=plan,
-            scope_manifest=scope,
+            planned_plan=prepared.plan,
+            scope_manifest=prepared.scope,
         )
 
     def dry_run(self, query: str, metadata: str, domain: str | None = None) -> str:

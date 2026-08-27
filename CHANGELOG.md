@@ -11,6 +11,11 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-27 16:36 EDT** — Added an opt-in live architecture benchmark runner
+  and versioned small/medium/large case catalog that compare direct and planned
+  RLM runs with operational and citation-validity metrics.
+- **2026-08-27 16:32 EDT** — Added a size-banded planner test playbook with
+  paired direct/planned prompts, repeat-trial guidance, and trajectory checks.
 - **2026-08-27 16:29 EDT** — Implemented opt-in deterministic scope manifests
   and constrained planning: validated plans now execute bounded leaf work or
   target-enforced child RLMs before a source-free final rendering pass.

@@ -62,6 +62,7 @@ Shared by the root parser and every subcommand:
 | `--config` | — | Explicit `*.toml` / `*.yaml` / `*.yml`. Skips cwd discovery |
 | `--dry-run` | — | Print system prompt + metadata + token/instruction counts. No API, no container |
 | `--planner-enabled` | `planner_enabled` | Opt in to deterministic scoping and constrained plan execution for `ask` / `research` |
+| `--architecture {direct,planned}` | `architecture` | Select the execution architecture; `--planner-enabled` remains an alias for `planned` |
 
 `--max-prompt-tokens 100000` or `--max-instructions 151` is a config error (exit `4`).
 

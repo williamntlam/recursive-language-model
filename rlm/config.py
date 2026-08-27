@@ -59,12 +59,15 @@ class Config:
     verbose: bool = False
     trace_capture: str = "metadata"
     extra_instructions: list[str] | None = None
+    architecture: str = "direct"
     planner_enabled: bool = False
     planner_max_selected: int = 16
     planner_max_leaf_calls: int = 16
     planner_max_child_calls: int = 8
 
     def __post_init__(self) -> None:
+        from rlm.core.architecture import architecture_names
+
         if self.environment not in ALLOWED_ENVIRONMENTS:
             raise ConfigError(
                 f"environment must be 'docker' (got {self.environment!r}). "
@@ -102,6 +105,16 @@ class Config:
             raise ConfigError("cell_timeout_s must be > 0")
         if self.trace_capture not in TRACE_CAPTURE_PROFILES:
             raise ConfigError("trace_capture must be 'metadata' or 'content'")
+        if self.architecture not in architecture_names():
+            choices = ", ".join(architecture_names())
+            raise ConfigError(f"architecture must be one of: {choices}")
+        # Compatibility for existing API calls and config files. Architecture is
+        # now the authoritative selector; planned also keeps the old observable
+        # config field truthful for callers that still inspect it.
+        if self.planner_enabled and self.architecture == "direct":
+            self.architecture = "planned"
+        if self.architecture == "planned":
+            self.planner_enabled = True
         for name in ("planner_max_selected", "planner_max_leaf_calls", "planner_max_child_calls"):
             if getattr(self, name) < 1:
                 raise ConfigError(f"{name} must be >= 1")
@@ -168,6 +181,7 @@ _COERCE = {
     "verbose": _as_bool,
     "trace_capture": _as_str,
     "extra_instructions": _as_opt_str_list,
+    "architecture": _as_str,
     "planner_enabled": _as_bool,
     "planner_max_selected": _as_int,
     "planner_max_leaf_calls": _as_int,

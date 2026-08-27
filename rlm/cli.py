@@ -8,6 +8,7 @@ from pathlib import Path
 
 from rlm.api import RLM
 from rlm.config import HARD_MAX_INSTRUCTIONS, HARD_MAX_PROMPT_TOKENS
+from rlm.core.architecture import architecture_names
 from rlm.core.planner import planner_instruction_count, planner_messages
 from rlm.core.prompt_guard import count_tokens
 from rlm.core.runtime import string_metadata
@@ -44,6 +45,7 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--config", dest="config_path")
     common.add_argument("--dry-run", action="store_true")
     common.add_argument("--planner-enabled", action="store_true", default=None)
+    common.add_argument("--architecture", choices=architecture_names())
 
     p = argparse.ArgumentParser(
         prog="rlm",
@@ -148,6 +150,7 @@ def main(argv: list[str] | None = None) -> int:
             log_dir=args.log_dir,
             verbose=True if args.verbose else None,
             trace_capture=args.trace_capture,
+            architecture=args.architecture,
             planner_enabled=args.planner_enabled,
         )
         if args.cmd == "ask":

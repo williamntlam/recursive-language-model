@@ -73,6 +73,32 @@ def test_opt_in_planner_is_source_free_and_scopes_the_root(tmp_path):
     assert "plan_execution" in events
 
 
+def test_named_planned_architecture_is_source_free(tmp_path):
+    manifest = build_repo_scope(load_repo(FIXTURE_REPO), "where?")
+    chosen = manifest.records[0]
+    plan = {
+        "version": 1,
+        "selected": [
+            {
+                "record_id": chosen.id,
+                "question": "inspect",
+                "route": "leaf" if chosen.route == "fit" else "child",
+            }
+        ],
+        "report_shape": "cited_markdown",
+    }
+    rlm, client = make_rlm(
+        tmp_path,
+        [json.dumps(plan), "leaf finding", repl("FINAL('planned')")],
+        architecture="planned",
+    )
+    out = rlm.ask_repo(FIXTURE_REPO, "where?")
+    assert out.response == "planned"
+    assert "AUTOCAST_CPU_BF16_IMPL_MARKER" not in "\n".join(
+        message.content for message in client.calls[0]
+    )
+
+
 def test_planned_oversized_record_uses_a_scoped_child(tmp_path):
     source = "class Large:\n" + "    value = 'x' * 10\n" * 2_500
     (tmp_path / "large.py").write_text(source, encoding="utf-8")

@@ -1,0 +1,23 @@
+{
+  "version": 1,
+  "cases": [
+    {
+      "id": "small-config-trace",
+      "band": "small",
+      "evidence_tokens": "<=25k",
+      "query": "Trace the public configuration loading path from CLI/API inputs through discovery, coercion, validation, and Config construction. State precedence and each explicit failure condition. Cite every claim."
+    },
+    {
+      "id": "medium-boundary-audit",
+      "band": "medium",
+      "evidence_tokens": "25k-150k",
+      "query": "Audit every path by which source content, paths, prompts, model output, credentials, or errors cross CLI/config, API, runtime, Docker/IPC, REPL namespace, leaf/child, and trajectory logging boundaries. State enforcing code, deterministic versus prompt-guided protection, and a relevant regression test. Separate confirmed guarantees from assumptions and cite every claim."
+    },
+    {
+      "id": "large-representative-census",
+      "band": "large",
+      "evidence_tokens": ">150k",
+      "query": "Perform a representative census across this target. Identify the implementation families most relevant to the user-facing contract, compare their material differences, exclude near-match distractors, report coverage limits explicitly, and cite every representative finding."
+    }
+  ]
+}
