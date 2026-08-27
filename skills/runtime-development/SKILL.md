@@ -24,6 +24,21 @@ Preserve data locality: source bytes stay in the REPL/container, while model
 calls receive only metadata or a narrow slice. Prefer Python analysis over a
 model call when it can determine the answer.
 
+## Execution architectures
+
+Repository and corpus execution is selected by `Config.architecture`, not by
+ad-hoc conditionals in the API or runtime. Keep each architecture in
+`rlm.core.architecture` behind the `ResearchArchitecture` protocol and return
+only a `PreparedArchitecture` (scope, validated plan, and deterministic
+fallback targets). This keeps experimental architectures independently
+selectable and comparable.
+
+`direct` is the normal REPL-led path. `planned` builds a source-free scope and
+executes only a validated plan; `planner_enabled` remains its compatibility
+alias. A new architecture must preserve the prompt ceilings, source-free final
+rendering, target enforcement, budget inheritance, and trajectory visibility.
+Do not make a new architecture an unbounded fan-out mechanism.
+
 For planner-enabled work, treat the scope manifest as the admission boundary:
 the planner may select only IDs, while runtime code resolves targets and
 executes their fixed leaf/child route. Keep final rendering source-free (only

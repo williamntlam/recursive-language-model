@@ -24,10 +24,19 @@ Startup refusals:
 - Static system+metadata already `>= 100_000` tokens → `PromptBudgetError`.
 - Composed instructions `> max_instructions` → `InstructionBudgetError` (CLI exit 4).
 
-## Opt-in deterministic planning
+## Selectable execution architectures
 
-`ask` and `research` accept `--planner-enabled` (or `planner_enabled = true`).
-It is off by default; ordinary runs use the root-loop workflow above.
+`ask` and `research` accept `--architecture direct|planned` (or
+`architecture = "direct"` / `"planned"` in configuration). `direct` is the
+default root-loop workflow. `--planner-enabled` and `planner_enabled = true`
+remain compatibility aliases for `planned`.
+
+Each architecture implements the shared `ResearchArchitecture` interface and
+returns a prepared execution boundary. This lets benchmarks select an
+architecture without branching the CLI, API, or `Runtime`; future architectures
+must retain the same isolation and budget contracts.
+
+### `planned`: opt-in deterministic planning
 
 Planning is an execution boundary, not a second unconstrained research agent:
 

@@ -15,5 +15,7 @@ log_dir: .rlm/logs
 verbose: false
 # metadata is safe default; content writes capped, redacted local prompt/output artifacts.
 trace_capture: metadata
-# Opt-in deterministic metadata scoping before the root REPL starts.
+# Execution architecture for repository/corpus work: direct (default) or planned.
+architecture: direct
+# Compatibility alias for architecture: planned.
 planner_enabled: false

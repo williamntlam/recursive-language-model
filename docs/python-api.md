@@ -33,7 +33,10 @@ RLM(
     max_consecutive_errors: int | None = None,
     log_dir: str | None = None,
     verbose: bool | None = None,
+    trace_capture: str | None = None,
     extra_instructions: list[str] | None = None,
+    architecture: str | None = None,         # "direct" (default) | "planned"
+    planner_enabled: bool | None = None,      # compatibility alias for planned
     config_path: str | Path | None = None,
 )
 ```
@@ -41,6 +44,11 @@ RLM(
 Omitted kwargs fall through to `load_config` (file + defaults). See [Configuration](configuration.md).
 
 `environment` other than `"docker"` raises `ConfigError`. There is no in-process product REPL.
+
+For `ask_repo` and `research`, pass `architecture="planned"` to use the
+deterministic scope-and-plan workflow, or leave the default `"direct"` for the
+normal REPL-led workflow. `planner_enabled=True` is retained as a compatibility
+alias for `architecture="planned"`.
 
 Internal-only (tests): `_client` and `_env_factory` inject `FakeClient` / `FakeEnv`. Do not use them in application code.
 

@@ -64,6 +64,20 @@ Loop:  gpt-5 writes ```repl``` Python
 Return answer + usage + trajectory directory
 ```
 
+## Execution architecture selection
+
+For repository and corpus work, `RLM` selects a named execution architecture
+before starting the runtime. `direct` (the default) gives the root REPL the
+normal read-only domain. `planned` first creates a deterministic, source-free
+scope manifest, validates planner-selected IDs against it, executes the fixed
+leaf/child routes, then gives the final renderer only compact findings.
+
+The selector lives in `rlm.core.architecture` behind `ResearchArchitecture`.
+Use `--architecture direct|planned` or `architecture = "..."` in TOML/YAML;
+the older `--planner-enabled` switch remains an alias for `planned`. The
+strategy boundary is intentionally outside `Runtime`, so new architectures can
+be benchmarked without weakening its prompt, budget, or container safeguards.
+
 Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Repo/research children **inherit the same workspace**, so they can keep grepping; they do not need the parent to stuff the file into the prompt.
 
 **Routing (smart zone).** Classify in the parent REPL (`grep`, `ast.parse`, `measure_ast`, `plan_reads`). `llm_query` / `repo.ask` for a span that **fits** (~24k chars) but that code cannot decide. `rlm_query` / `repo.explore` only when `route == "child"` (or you cannot chunk). Do not spawn one gpt-5 child per file to count AST patterns. Parent `hist` should stay in the **low thousands** of tokens; 100k is a backstop.

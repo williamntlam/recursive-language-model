@@ -11,6 +11,9 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-27 16:51 EDT** — Added selectable `direct` and `planned` research
+  architectures behind a shared strategy interface, configurable through the
+  CLI, API, and TOML/YAML configuration.
 - **2026-08-27 16:36 EDT** — Added an opt-in live architecture benchmark runner
   and versioned small/medium/large case catalog that compare direct and planned
   RLM runs with operational and citation-validity metrics.
