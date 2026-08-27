@@ -57,10 +57,7 @@ def test_callback_server_does_not_shadow_thread_handle():
     """Python 3.13 Thread.__init__ sets self._handle to a _ThreadHandle."""
     from rlm.environments.docker import CallbackServer
 
-    names = {
-        name
-        for name, _ in inspect.getmembers(CallbackServer, predicate=inspect.isfunction)
-    }
+    names = {name for name, _ in inspect.getmembers(CallbackServer, predicate=inspect.isfunction)}
     assert "_handle" not in names
     assert "_serve_request" in names
 
@@ -158,6 +155,46 @@ def test_container_has_no_key_no_internet_and_context_is_mounted(tmp_path, monke
 
 
 @requires_docker
+def test_container_init_preserves_repo_target_scope(tmp_path):
+    from rlm.environments.docker import DockerEnv
+    from rlm.repl_ns import SubcallHandler
+
+    class Quiet(SubcallHandler):
+        def llm_query(self, prompt, model=None):
+            return "leaf"
+
+        def llm_query_batched(self, prompts, model=None):
+            return ["leaf"] * len(prompts)
+
+        def rlm_query(self, prompt, model=None):
+            return "child"
+
+        def rlm_query_batched(self, prompts, model=None):
+            return ["child"] * len(prompts)
+
+    workspace = tmp_path / "repo"
+    workspace.mkdir()
+    (workspace / "allowed.py").write_text("ALLOWED = 1\n", encoding="utf-8")
+    (workspace / "outside.py").write_text("OUTSIDE = 1\n", encoding="utf-8")
+    env = DockerEnv(
+        handler=Quiet(),
+        workspace=workspace,
+        mode="repo",
+        query="q",
+        targets=[{"path": "allowed.py", "start": None, "end": None}],
+    )
+    try:
+        visible = env.execute("print([row.path for row in repo.files()])")
+        assert visible.error is None
+        assert visible.stdout.strip() == "['allowed.py']"
+        blocked = env.execute("repo.read('outside.py')")
+        assert blocked.error is not None
+        assert "outside the declared repository target scope" in blocked.stderr
+    finally:
+        env.close()
+
+
+@requires_docker
 def test_rlm_query_can_outlive_cell_cpu_timeout(tmp_path):
     """Nested host callbacks must not be killed by the cell CPU SIGALRM."""
     from rlm.environments.docker import DockerEnv
@@ -199,14 +236,7 @@ def test_rlm_query_can_outlive_cell_cpu_timeout(tmp_path):
 def test_docker_completion_with_fake_client(tmp_path, monkeypatch):
     monkeypatch.setenv("OPENAI_API_KEY", "sk-test-should-not-enter-container")
     rlm = RLM(
-        _client=FakeClient(
-            [
-                repl(
-                    "prefix = context[:12]\n"
-                    "FINAL_VAR('prefix')\n"
-                )
-            ]
-        ),
+        _client=FakeClient([repl("prefix = context[:12]\nFINAL_VAR('prefix')\n")]),
         log_dir=str(tmp_path / "logs"),
     )
     context = "HELLO_DOCKER " + ("z" * 500)

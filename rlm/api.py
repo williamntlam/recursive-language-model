@@ -9,6 +9,7 @@ from typing import Any
 from rlm.backends.openai import OpenAIClient
 from rlm.config import Config, load_config
 from rlm.core.architecture import get_architecture
+from rlm.core.budgets import Budget
 from rlm.core.history import sha256_text
 from rlm.core.planner import PlanValidationError, ResearchPlan, parse_plan, planner_messages
 from rlm.core.prompt_guard import count_instructions, count_tokens
@@ -16,7 +17,13 @@ from rlm.core.runtime import Runtime, query_sha, string_metadata, workspace_for_
 from rlm.core.types import Completion, Message, PromptPayload
 from rlm.domains.corpus import Corpus, catalog_rows, corpus_manifest, load_corpus
 from rlm.domains.repo import load_repo, repo_manifest
-from rlm.domains.scope import ScopeManifest, build_corpus_scope, build_repo_scope
+from rlm.domains.scope import (
+    ScopeManifest,
+    build_corpus_census,
+    build_corpus_scope,
+    build_repo_census,
+    build_repo_scope,
+)
 from rlm.errors import ConfigError, StartupError
 from rlm.logging.trajectory import TrajectoryLogger
 from rlm.prompts import compose_system_prompt, exposed_methods_for
@@ -38,6 +45,11 @@ def _docker_env_factory(*, bindings, handler, mode, workspace, config):
         workspace=workspace,
         mode=mode,
         query=str(bindings.get("query") or ""),
+        targets=(
+            getattr(bindings.get("repo"), "targets", None)
+            if mode == "repo"
+            else getattr(bindings.get("corpus"), "targets", None)
+        ),
         max_stdout_chars=config.max_observation_chars,
         cell_timeout_s=config.cell_timeout_s,
         exec_wait_s=config.max_timeout_s,
@@ -68,6 +80,8 @@ class RLM:
         extra_instructions: list[str] | None = None,
         architecture: str | None = None,
         planner_enabled: bool | None = None,
+        planner_shard_target_tokens: int | None = None,
+        reduction_target_tokens: int | None = None,
         config_path: str | Path | None = None,
         _client: Any = None,
         _env_factory: Callable | None = None,
@@ -93,9 +107,12 @@ class RLM:
             extra_instructions=extra_instructions,
             architecture=architecture,
             planner_enabled=planner_enabled,
+            planner_shard_target_tokens=planner_shard_target_tokens,
+            reduction_target_tokens=reduction_target_tokens,
         )
         self._client = _client
         self._env_factory = _env_factory
+        self._planning_budget: Budget | None = None
 
     @classmethod
     def from_config(cls, path: str | Path, **kwargs: Any) -> RLM:
@@ -128,7 +145,9 @@ class RLM:
             },
         )
 
-    def _runtime(self, logger: TrajectoryLogger, domain: str | None) -> Runtime:
+    def _runtime(
+        self, logger: TrajectoryLogger, domain: str | None, *, budget: Budget | None = None
+    ) -> Runtime:
         return Runtime(
             self.config,
             self._client_or_openai(),
@@ -136,6 +155,7 @@ class RLM:
             logger,
             depth=0,
             domain=domain,
+            budget=budget,
         )
 
     def _plan(
@@ -160,6 +180,8 @@ class RLM:
             },
         )
         try:
+            if self._planning_budget is not None:
+                self._planning_budget.check()
             # Planner output is data, never injected into a REPL or executed.
             if (
                 count_tokens(messages) >= 100_000
@@ -167,6 +189,9 @@ class RLM:
             ):
                 raise PlanValidationError("planner prompt exceeds the configured token limit")
             response = self._client_or_openai().complete(messages, model=self.config.root_model)
+            if self._planning_budget is not None:
+                self._planning_budget.record(response)
+                self._planning_budget.subcalls += 1
             plan = parse_plan(
                 response.text,
                 manifest,
@@ -224,13 +249,21 @@ class RLM:
             query,
             {"domain": "repo", "repo_root_digest": sha256_text(str(repo.root))},
         )
-        prepared = get_architecture(self.config.architecture).prepare(
-            query,
-            repo,
-            logger,
-            build_scope=build_repo_scope,
-            plan_scope=self._plan,
-        )
+        budget = Budget.from_config(self.config.max_budget_usd, self.config.max_timeout_s)
+        self._planning_budget = budget
+        try:
+            prepared = get_architecture(self.config.architecture).prepare(
+                query,
+                repo,
+                logger,
+                build_scope=build_repo_census
+                if self.config.architecture == "planned_waves"
+                else build_repo_scope,
+                plan_scope=self._plan,
+                planner_shard_target_tokens=self.config.planner_shard_target_tokens,
+            )
+        finally:
+            self._planning_budget = None
         if prepared.fallback_targets:
             # Recover to the existing staged REPL, but retain the deterministic
             # admissible-evidence boundary rather than reopening the whole repo.
@@ -241,7 +274,7 @@ class RLM:
                 scope_digest=prepared.scope.digest if prepared.scope is not None else None,
             )
         bindings = {"query": query, "repo": repo, "manifest": repo_manifest(repo)}
-        return self._runtime(logger, "repo").run(
+        return self._runtime(logger, "repo", budget=budget).run(
             query=query,
             metadata=repo_manifest(repo),
             bindings=bindings,
@@ -250,6 +283,7 @@ class RLM:
             cleanup_workspace=False,
             planned_plan=prepared.plan,
             scope_manifest=prepared.scope,
+            planned_waves=prepared.planned_waves,
         )
 
     def research(self, path: str | Path, query: str) -> Completion:
@@ -258,13 +292,21 @@ class RLM:
             query,
             {"domain": "research", "n_docs": len(corpus.docs)},
         )
-        prepared = get_architecture(self.config.architecture).prepare(
-            query,
-            corpus,
-            logger,
-            build_scope=build_corpus_scope,
-            plan_scope=self._plan,
-        )
+        budget = Budget.from_config(self.config.max_budget_usd, self.config.max_timeout_s)
+        self._planning_budget = budget
+        try:
+            prepared = get_architecture(self.config.architecture).prepare(
+                query,
+                corpus,
+                logger,
+                build_scope=build_corpus_census
+                if self.config.architecture == "planned_waves"
+                else build_corpus_scope,
+                plan_scope=self._plan,
+                planner_shard_target_tokens=self.config.planner_shard_target_tokens,
+            )
+        finally:
+            self._planning_budget = None
         if prepared.fallback_targets:
             corpus = Corpus(corpus.docs, targets=list(prepared.fallback_targets))
             logger.event(
@@ -281,7 +323,7 @@ class RLM:
         workspace = Path(path).resolve()
         if workspace.is_file():
             workspace = workspace.parent
-        return self._runtime(logger, "research").run(
+        return self._runtime(logger, "research", budget=budget).run(
             query=query,
             metadata=corpus_manifest(corpus),
             bindings=bindings,
@@ -290,6 +332,7 @@ class RLM:
             cleanup_workspace=False,
             planned_plan=prepared.plan,
             scope_manifest=prepared.scope,
+            planned_waves=prepared.planned_waves,
         )
 
     def dry_run(self, query: str, metadata: str, domain: str | None = None) -> str:

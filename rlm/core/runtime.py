@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import sys
 import tempfile
 import threading
@@ -126,6 +127,7 @@ class Runtime:
         cleanup_workspace: bool = False,
         planned_plan: Any | None = None,
         scope_manifest: Any | None = None,
+        planned_waves: tuple[tuple[Any, Any], ...] = (),
     ) -> Completion:
         # The logger creates the root span before environment construction. Nested
         # RLMs receive a run span under the invoking callback.
@@ -158,6 +160,34 @@ class Runtime:
         if planned_plan is not None and scope_manifest is not None:
             findings = self.execute_planned_work(planned_plan, scope_manifest)
             finding_text = "\n\n".join(findings)
+            # The renderer receives findings only, never a domain object or
+            # workspace that contains the original source material.
+            workspace, cleanup_workspace = workspace_for_string(finding_text)
+            bindings = {"query": query, "context": finding_text}
+            metadata = (
+                string_metadata(finding_text)
+                + "These are bounded findings from an approved plan. Render a concise, "
+                "cited final answer from them only; do not do further research.\n"
+            )
+            mode = "string"
+            self.domain = None
+            self.mode = mode
+            self._workspace = workspace
+            self._bindings = bindings
+            self._metadata = metadata
+            payload = self.compose_payload(query)
+            self.check_instruction_budget(payload)
+            hist = [
+                Message("system", payload.system_prompt),
+                Message("user", metadata + "\nUser query:\n" + query),
+            ]
+        elif planned_waves:
+            findings = []
+            for plan, shard in planned_waves:
+                findings.extend(self.execute_planned_work(plan, shard))
+            # Keep the source-free render input below the existing hard guard.
+            finding_text = self._reduce_findings(findings)
+            self._write_planned_waves_summary()
             # The renderer receives findings only, never a domain object or
             # workspace that contains the original source material.
             workspace, cleanup_workspace = workspace_for_string(finding_text)
@@ -469,7 +499,17 @@ class Runtime:
         findings: list[str] = []
         leaf_count = child_count = 0
         records = {record.id: record for record in manifest.records}
-        for selection, target in zip(plan.selected, targets, strict=True):
+        for index, (selection, target) in enumerate(zip(plan.selected, targets, strict=True)):
+            try:
+                self.budget.check()
+            except BudgetExhaustedError as exc:
+                status = "skipped_timeout" if "timeout" in str(exc).lower() else "skipped_budget"
+                for pending in plan.selected[index:]:
+                    self._write_coverage({"record_id": pending.record_id, "status": status})
+                self.logger.event(
+                    kind="plan_execution", status=status, scope_digest=manifest.digest
+                )
+                break
             record = records[selection.record_id]
             citation = self._target_citation(target)
             if selection.route == "leaf":
@@ -498,6 +538,28 @@ class Runtime:
                 route=selection.route,
                 status="error" if clean.startswith("Error:") else "ok",
             )
+            status = "failed" if clean.startswith("Error:") else "executed"
+            if "timeout exhausted" in clean.lower():
+                status = "skipped_timeout"
+            elif "budget exhausted" in clean.lower():
+                status = "skipped_budget"
+            self._write_coverage(
+                {
+                    "record_id": record.id,
+                    "status": status,
+                    "route": selection.route,
+                    "finding_digest": sha256_text(clean),
+                }
+            )
+            findings_path = self.logger.dir / "artifacts" / "findings.jsonl"
+            with findings_path.open("a", encoding="utf-8") as artifact:
+                artifact.write(
+                    json.dumps(
+                        {"record_id": record.id, "citation": citation, "finding": clean[:4_000]},
+                        sort_keys=True,
+                    )
+                    + "\n"
+                )
         self.logger.event(
             kind="plan_execution",
             selected_count=len(targets),
@@ -507,6 +569,97 @@ class Runtime:
             scope_digest=manifest.digest,
         )
         return findings
+
+    def _write_coverage(self, record: dict[str, Any]) -> None:
+        path = self.logger.dir / "artifacts" / "coverage.jsonl"
+        path.parent.mkdir(exist_ok=True)
+        with path.open("a", encoding="utf-8") as artifact:
+            artifact.write(json.dumps(record, sort_keys=True) + "\n")
+
+    def _reduce_findings(self, findings: list[str]) -> str:
+        """Reduce all source-free findings in token-safe batches until one render input remains."""
+        current = findings or ["No planner selections were executed. Coverage is incomplete."]
+        reductions = self.logger.dir / "artifacts" / "reductions.jsonl"
+        round_no = 0
+        while (
+            len(current) > 1
+            or count_tokens([Message("user", current[0])]) > self.config.reduction_target_tokens
+        ):
+            round_no += 1
+            batches: list[list[str]] = [[]]
+            for finding in current:
+                candidate = "\n\n".join([*batches[-1], finding])
+                if (
+                    batches[-1]
+                    and count_tokens([Message("user", candidate)])
+                    > self.config.reduction_target_tokens
+                ):
+                    batches.append([finding])
+                else:
+                    batches[-1].append(finding)
+            next_round: list[str] = []
+            for batch in batches:
+                body = "\n\n".join(batch)
+                prompt = (
+                    "Reduce these compact research findings. Preserve citations, coverage gaps, "
+                    "and uncertainty. Do not request or reproduce source bodies.\n\n" + body
+                )
+                summary = self.leaf_complete(prompt).strip()
+                if len(summary) > 4_000:
+                    summary = summary[:4_000] + "\n...[reduction truncated]"
+                next_round.append(summary)
+                with reductions.open("a", encoding="utf-8") as artifact:
+                    artifact.write(
+                        json.dumps(
+                            {
+                                "round": round_no,
+                                "input_count": len(batch),
+                                "input_digest": sha256_text(body),
+                                "output_digest": sha256_text(summary),
+                            },
+                            sort_keys=True,
+                        )
+                        + "\n"
+                    )
+            if next_round == current:
+                break
+            current = next_round
+        self.logger.event(
+            kind="planned_waves_reduction", status="ok", rounds=round_no, output_count=len(current)
+        )
+        return current[0]
+
+    def _write_planned_waves_summary(self) -> None:
+        """Summarize append-only coverage transitions for reports and offline audit."""
+        artifacts = self.logger.dir / "artifacts"
+        coverage = artifacts / "coverage.jsonl"
+        latest: dict[str, str] = {}
+        if coverage.is_file():
+            for line in coverage.read_text(encoding="utf-8").splitlines():
+                try:
+                    item = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                record_id, status = item.get("record_id"), item.get("status")
+                if isinstance(record_id, str) and isinstance(status, str):
+                    latest[record_id] = status
+        counts: dict[str, int] = {}
+        for status in latest.values():
+            counts[status] = counts.get(status, 0) + 1
+        incomplete = any(
+            status in {"unplannable", "skipped_budget", "skipped_timeout"}
+            for status in latest.values()
+        )
+        (artifacts / "planned-waves-summary.json").write_text(
+            json.dumps(
+                {"coverage": counts, "record_count": len(latest), "incomplete": incomplete},
+                indent=2,
+                sort_keys=True,
+            )
+            + "\n",
+            encoding="utf-8",
+        )
+        self.logger.event(kind="planned_waves_summary", coverage=counts, incomplete=incomplete)
 
     def _target_text(self, target: dict[str, Any]) -> str:
         if self.mode == "repo":

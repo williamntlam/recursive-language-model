@@ -85,10 +85,7 @@ def assert_sendable(
             raise err
         raise err
     if n_tok >= HARD_PROMPT_TOKEN_EXCLUSIVE or n_tok > max_prompt_tokens:
-        msg = (
-            f"Error: prompt is {n_tok} tokens; max is {max_prompt_tokens}. "
-            "Slice the argument."
-        )
+        msg = f"Error: prompt is {n_tok} tokens; max is {max_prompt_tokens}. Slice the argument."
         if as_parent:
             raise PromptBudgetError(
                 f"Parent prompt would be {n_tok} tokens (max {max_prompt_tokens}). "

@@ -69,13 +69,16 @@ class RpcHandler(SubcallHandler):
             return [str(x) for x in value]
         return [str(value)]
 
-    def rlm_query(self, prompt: str, model: str | None = None) -> str:
+    def rlm_query(
+        self, prompt: str, model: str | None = None, *, targets: list[dict] | None = None
+    ) -> str:
         return str(
             self._call(
                 {
                     "type": "rlm_query",
                     "prompt": prompt,
                     "model": model,
+                    "targets": targets,
                     "cell_span_id": self.cell_span_id,
                 }
             )
@@ -95,7 +98,7 @@ class RpcHandler(SubcallHandler):
         return [str(value)]
 
 
-def bind_workspace(mode: str, query: str) -> dict:
+def bind_workspace(mode: str, query: str, targets: list[dict] | None = None) -> dict:
     bindings: dict = {"query": query}
     context_file = WORKSPACE / "context.txt"
     if mode == "string" or context_file.is_file():
@@ -104,10 +107,10 @@ def bind_workspace(mode: str, query: str) -> dict:
         else:
             bindings["context"] = ""
     if mode == "repo":
-        bindings["repo"] = Repo(WORKSPACE)
+        bindings["repo"] = Repo(WORKSPACE, targets=targets)
         bindings["context"] = bindings.get("context", "")
     if mode == "research":
-        corpus = Corpus(ingest_path(WORKSPACE))
+        corpus = Corpus(ingest_path(WORKSPACE), targets=targets)
         bindings["corpus"] = corpus
         bindings["catalog"] = [
             {"id": d.id, "title": d.title, "path": d.path, "n_chars": d.n_chars}
@@ -143,7 +146,12 @@ def serve() -> None:
                 )
                 mode = msg.get("mode") or "string"
                 query = msg.get("query") or ""
-                bindings = bind_workspace(mode, query)
+                # An absent targets field deliberately means direct/unscoped;
+                # an explicit [] is an empty scope, never a full workspace.
+                targets = msg.get("targets") if "targets" in msg else None
+                if targets is not None and not isinstance(targets, list):
+                    raise ValueError("init targets must be a list when present")
+                bindings = bind_workspace(mode, query, targets)
                 ns = create_namespace(bindings, handler, max_stdout_chars=max_stdout)
                 reserved = snapshot_reserved(ns)
                 write_msg(conn, {"type": "ok"})

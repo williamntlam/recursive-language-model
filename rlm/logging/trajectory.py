@@ -168,9 +168,9 @@ class TrajectoryLogger:
             record["error_type"] = error_type
         if code is not None:
             raw_code = str(code)
-            record["code_sha256"] = __import__("hashlib").sha256(
-                raw_code.encode("utf-8")
-            ).hexdigest()
+            record["code_sha256"] = (
+                __import__("hashlib").sha256(raw_code.encode("utf-8")).hexdigest()
+            )
             record["code_n_chars"] = len(raw_code)
         with self.repl_errors_path.open("a", encoding="utf-8") as f:
             f.write(json.dumps(_safe(record), ensure_ascii=False) + "\n")

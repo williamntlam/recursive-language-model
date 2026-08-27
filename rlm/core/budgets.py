@@ -64,9 +64,7 @@ class Budget:
             raise BudgetExhaustedError("USD budget exhausted.")
 
     def record(self, response: LMResponse) -> float:
-        cost = estimate_cost_usd(
-            response.model, response.prompt_tokens, response.completion_tokens
-        )
+        cost = estimate_cost_usd(response.model, response.prompt_tokens, response.completion_tokens)
         self.spent_usd += cost
         self.prompt_tokens += response.prompt_tokens
         self.completion_tokens += response.completion_tokens

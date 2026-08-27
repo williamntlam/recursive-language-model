@@ -37,9 +37,9 @@ def test_harbor_reading_task_keeps_source_read_only_and_only_requests_an_answer(
 
 
 def test_harbor_verifier_writes_a_numeric_reward_without_installing_dependencies():
-    test_script = (
-        TASKS_ROOT / "rlm-reading-contracts" / "tests" / "test.sh"
-    ).read_text(encoding="utf-8")
+    test_script = (TASKS_ROOT / "rlm-reading-contracts" / "tests" / "test.sh").read_text(
+        encoding="utf-8"
+    )
 
     assert "/logs/verifier/reward.txt" in test_script
     assert "printf '1" in test_script

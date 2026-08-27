@@ -138,6 +138,12 @@ def test_architecture_selects_planned_and_preserves_planner_alias():
     assert Config(planner_enabled=True).architecture == "planned"
 
 
+def test_planned_waves_is_explicit_and_keeps_planner_compatibility():
+    cfg = Config(architecture="planned_waves", planner_shard_target_tokens=8_000)
+    assert cfg.architecture == "planned_waves"
+    assert cfg.planner_enabled is True
+
+
 def test_unknown_architecture_is_rejected():
     with pytest.raises(ConfigError, match="architecture"):
         Config(architecture="unbounded")

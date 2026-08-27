@@ -11,6 +11,14 @@ using the categories Added, Changed, Deprecated, Removed, Fixed, and Security.
 
 ### Added
 
+- **2026-08-27 17:25 EDT** — Implemented the opt-in `planned_waves`
+  architecture with uncapped local censuses, token-safe planner shards,
+  append-only coverage/findings/reduction artifacts, bounded source-free
+  reductions, and Docker target-scope propagation.
+- **2026-08-27 16:57 EDT** — Added reference specification 009 for the
+  `planned_waves` architecture: complete local metadata census, token-aware
+  planner shards, bounded execution/reduction waves, coverage artifacts, and
+  Docker-enforced fallback scope propagation.
 - **2026-08-27 16:51 EDT** — Added selectable `direct` and `planned` research
   architectures behind a shared strategy interface, configurable through the
   CLI, API, and TOML/YAML configuration.

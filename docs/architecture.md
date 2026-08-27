@@ -73,10 +73,15 @@ scope manifest, validates planner-selected IDs against it, executes the fixed
 leaf/child routes, then gives the final renderer only compact findings.
 
 The selector lives in `rlm.core.architecture` behind `ResearchArchitecture`.
-Use `--architecture direct|planned` or `architecture = "..."` in TOML/YAML;
+Use `--architecture direct|planned|planned_waves` or `architecture = "..."` in TOML/YAML;
 the older `--planner-enabled` switch remains an alias for `planned`. The
 strategy boundary is intentionally outside `Runtime`, so new architectures can
 be benchmarked without weakening its prompt, budget, or container safeguards.
+
+`planned_waves` inventories all eligible records locally as source-free metadata,
+splits that census into token-safe planner shards, and records explicit coverage
+for each record. Scoped targets cross the Docker init protocol, so a container
+cannot regain full-workspace access after planning fails.
 
 Each `rlm_query` child is a full RLM: **its own** container, callback socket, and remaining budget. There is no Docker-in-Docker. Repo/research children **inherit the same workspace**, so they can keep grepping; they do not need the parent to stuff the file into the prompt.
 

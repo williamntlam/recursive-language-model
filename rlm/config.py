@@ -64,6 +64,8 @@ class Config:
     planner_max_selected: int = 16
     planner_max_leaf_calls: int = 16
     planner_max_child_calls: int = 8
+    planner_shard_target_tokens: int = 12_000
+    reduction_target_tokens: int = 12_000
 
     def __post_init__(self) -> None:
         from rlm.core.architecture import architecture_names
@@ -113,11 +115,27 @@ class Config:
         # config field truthful for callers that still inspect it.
         if self.planner_enabled and self.architecture == "direct":
             self.architecture = "planned"
-        if self.architecture == "planned":
+        if self.architecture in {"planned", "planned_waves"}:
             self.planner_enabled = True
-        for name in ("planner_max_selected", "planner_max_leaf_calls", "planner_max_child_calls"):
+        for name in (
+            "planner_max_selected",
+            "planner_max_leaf_calls",
+            "planner_max_child_calls",
+            "planner_shard_target_tokens",
+            "reduction_target_tokens",
+        ):
             if getattr(self, name) < 1:
                 raise ConfigError(f"{name} must be >= 1")
+        if (
+            self.architecture == "planned_waves"
+            and self.planner_shard_target_tokens > self.max_prompt_tokens
+        ):
+            raise ConfigError("planner_shard_target_tokens cannot exceed max_prompt_tokens")
+        if (
+            self.architecture == "planned_waves"
+            and self.reduction_target_tokens > self.max_prompt_tokens
+        ):
+            raise ConfigError("reduction_target_tokens cannot exceed max_prompt_tokens")
 
     def to_dict(self) -> dict[str, Any]:
         return asdict(self)
@@ -186,6 +204,8 @@ _COERCE = {
     "planner_max_selected": _as_int,
     "planner_max_leaf_calls": _as_int,
     "planner_max_child_calls": _as_int,
+    "planner_shard_target_tokens": _as_int,
+    "reduction_target_tokens": _as_int,
 }
 
 

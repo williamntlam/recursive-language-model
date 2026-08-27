@@ -46,6 +46,8 @@ def _build_parser() -> argparse.ArgumentParser:
     common.add_argument("--dry-run", action="store_true")
     common.add_argument("--planner-enabled", action="store_true", default=None)
     common.add_argument("--architecture", choices=architecture_names())
+    common.add_argument("--planner-shard-target-tokens", type=int)
+    common.add_argument("--reduction-target-tokens", type=int)
 
     p = argparse.ArgumentParser(
         prog="rlm",
@@ -152,6 +154,8 @@ def main(argv: list[str] | None = None) -> int:
             trace_capture=args.trace_capture,
             architecture=args.architecture,
             planner_enabled=args.planner_enabled,
+            planner_shard_target_tokens=args.planner_shard_target_tokens,
+            reduction_target_tokens=args.reduction_target_tokens,
         )
         if args.cmd == "ask":
             repo = load_repo(args.path)

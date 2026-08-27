@@ -68,10 +68,12 @@ Missing key → `StartupError` when constructing `OpenAIClient` (CLI exit `4`). 
 | `verbose` | `false` | Print iterations to stderr |
 | `extra_instructions` | unset | List of strings; each counts as one instruction |
 | `planner_enabled` | `false` | Opt in to deterministic scope + constrained plan execution for `ask` / `research` |
-| `architecture` | `direct` | Execution architecture: `direct` or `planned`; setting `planned` enables the legacy planner alias |
+| `architecture` | `direct` | Execution architecture: `direct`, `planned`, or `planned_waves`; planned modes enable the legacy planner alias |
 | `planner_max_selected` | `16` | Maximum manifest records a plan may select (`>= 1`) |
 | `planner_max_leaf_calls` | `16` | Maximum planned leaf calls (`>= 1`) |
 | `planner_max_child_calls` | `8` | Maximum planned target-enforced child calls (`>= 1`) |
+| `planner_shard_target_tokens` | `12000` | Maximum source-free metadata prompt size per `planned_waves` planner shard (`>= 1`) |
+| `reduction_target_tokens` | `12000` | Maximum source-free finding size per reduction batch (`>= 1`) |
 
 Hard ceilings (cannot raise):
 

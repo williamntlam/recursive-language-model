@@ -39,6 +39,8 @@ class ScopeRecord:
     signals: tuple[str, ...] = ()
     kind: str | None = None
     qualname: str | None = None
+    n_tokens_estimate: int | None = None
+    content_digest: str | None = None
 
     def public_dict(self) -> dict[str, Any]:
         # target identifiers are intentionally present in the in-memory manifest:
@@ -54,7 +56,7 @@ class ScopeManifest:
     records: tuple[ScopeRecord, ...]
     counts: dict[str, int]
     truncated: dict[str, bool]
-    caps: dict[str, int]
+    caps: dict[str, int | None]
     digest: str
 
     def canonical_json(self) -> str:
@@ -87,14 +89,17 @@ def _manifest(
     paths: int,
     ast_nodes: int,
     truncated: dict[str, bool],
-    caps: dict[str, int],
+    caps: dict[str, int | None],
 ) -> ScopeManifest:
     # Cap metadata after record construction, so a caller gets a valid prefix.
     kept: list[ScopeRecord] = []
     for record in records:
         candidate = kept + [record]
         trial = {"records": [r.public_dict() for r in candidate]}
-        if len(_canonical(trial).encode()) > caps["metadata_bytes"]:
+        if (
+            caps["metadata_bytes"] is not None
+            and len(_canonical(trial).encode()) > caps["metadata_bytes"]
+        ):
             truncated["metadata_bytes"] = True
             break
         kept.append(record)
@@ -129,10 +134,10 @@ def build_repo_scope(
     class_name_patterns: Iterable[str] = (),
     function_name_patterns: Iterable[str] = (),
     ast_predicates: Iterable[str] = (),
-    max_records: int = DEFAULT_MAX_RECORDS,
-    max_paths: int = DEFAULT_MAX_PATHS,
-    max_ast_nodes: int = DEFAULT_MAX_AST_NODES,
-    max_metadata_bytes: int = DEFAULT_MAX_METADATA_BYTES,
+    max_records: int | None = DEFAULT_MAX_RECORDS,
+    max_paths: int | None = DEFAULT_MAX_PATHS,
+    max_ast_nodes: int | None = DEFAULT_MAX_AST_NODES,
+    max_metadata_bytes: int | None = DEFAULT_MAX_METADATA_BYTES,
 ) -> ScopeManifest:
     """Build stable declaration/file targets without copying any file text out."""
     caps = {
@@ -153,7 +158,7 @@ def build_repo_scope(
     paths = ast_nodes = 0
     truncated = {"records": False, "paths": False, "ast_nodes": False, "metadata_bytes": False}
     for file in sorted(repo._walk_files(), key=repo._rel):  # noqa: SLF001 - domain inventory
-        if paths >= max_paths:
+        if max_paths is not None and paths >= max_paths:
             truncated["paths"] = True
             break
         if not _looks_text(file):
@@ -180,7 +185,7 @@ def build_repo_scope(
                 def visit(node: ast.AST, parents: tuple[str, ...] = ()) -> None:
                     nonlocal ast_nodes
                     if isinstance(node, (ast.ClassDef, ast.FunctionDef, ast.AsyncFunctionDef)):
-                        if ast_nodes >= max_ast_nodes:
+                        if max_ast_nodes is not None and ast_nodes >= max_ast_nodes:
                             truncated["ast_nodes"] = True
                             return
                         ast_nodes += 1
@@ -221,16 +226,18 @@ def build_repo_scope(
                     signals,
                     kind,
                     qualname,
+                    len(text[start - 1 : end].encode("utf-8")) // 4,
+                    "sha256:" + hashlib.sha256(text[start - 1 : end].encode("utf-8")).hexdigest(),
                 )
             )
-            if len(records) >= max_records:
+            if max_records is not None and len(records) >= max_records:
                 truncated["records"] = True
                 break
-        if len(records) >= max_records:
+        if max_records is not None and len(records) >= max_records:
             break
         # Files are valid targets too when no declaration filter is requested.
         if not (names or class_names or function_names or predicates) and not declarations:
-            if len(records) >= max_records:
+            if max_records is not None and len(records) >= max_records:
                 truncated["records"] = True
                 break
             records.append(
@@ -242,6 +249,8 @@ def build_repo_scope(
                     ("file",),
                     "file",
                     path,
+                    len(text.encode("utf-8")) // 4,
+                    "sha256:" + hashlib.sha256(text.encode("utf-8")).hexdigest(),
                 )
             )
     return _manifest(
@@ -254,9 +263,9 @@ def build_corpus_scope(
     query: str,
     *,
     patterns: Iterable[str] = (),
-    max_records: int = DEFAULT_MAX_RECORDS,
-    max_paths: int = DEFAULT_MAX_PATHS,
-    max_metadata_bytes: int = DEFAULT_MAX_METADATA_BYTES,
+    max_records: int | None = DEFAULT_MAX_RECORDS,
+    max_paths: int | None = DEFAULT_MAX_PATHS,
+    max_metadata_bytes: int | None = DEFAULT_MAX_METADATA_BYTES,
 ) -> ScopeManifest:
     caps = {
         "records": max_records,
@@ -268,14 +277,14 @@ def build_corpus_scope(
     truncated = {"records": False, "paths": False, "ast_nodes": False, "metadata_bytes": False}
     regexes = [re.compile(pattern) for pattern in patterns]
     for index, doc in enumerate(corpus.docs):
-        if index >= max_paths:
+        if max_paths is not None and index >= max_paths:
             truncated["paths"] = True
             break
         spans = [(m.start(), m.end()) for rx in regexes for m in rx.finditer(doc.text)] or [
             (0, len(doc.text))
         ]
         for start, end in spans:
-            if len(records) >= max_records:
+            if max_records is not None and len(records) >= max_records:
                 truncated["records"] = True
                 break
             n_chars = end - start
@@ -288,6 +297,8 @@ def build_corpus_scope(
                     ("regex" if regexes else "catalog",),
                     "document",
                     doc.id,
+                    len(doc.text[start:end].encode("utf-8")) // 4,
+                    "sha256:" + hashlib.sha256(doc.text[start:end].encode("utf-8")).hexdigest(),
                 )
             )
         if truncated["records"]:
@@ -296,8 +307,37 @@ def build_corpus_scope(
         "research",
         query,
         records,
-        paths=min(len(corpus.docs), max_paths),
+        paths=min(len(corpus.docs), max_paths) if max_paths is not None else len(corpus.docs),
         ast_nodes=0,
         truncated=truncated,
         caps=caps,
+    )
+
+
+def build_repo_census(repo: Repo, query: str) -> ScopeManifest:
+    """Complete local, source-free repository inventory for planned_waves."""
+    return build_repo_scope(
+        repo, query, max_records=None, max_paths=None, max_ast_nodes=None, max_metadata_bytes=None
+    )
+
+
+def build_corpus_census(corpus: Corpus, query: str) -> ScopeManifest:
+    """Complete local, source-free corpus inventory for planned_waves."""
+    return build_corpus_scope(
+        corpus, query, max_records=None, max_paths=None, max_metadata_bytes=None
+    )
+
+
+def scope_slice(manifest: ScopeManifest, records: list[ScopeRecord]) -> ScopeManifest:
+    """Make a source-free planner shard retaining the parent domain/query identity."""
+    return _manifest(
+        manifest.domain,
+        manifest.query_digest,
+        records,
+        paths=len(
+            {str(record.target.get("path") or record.target.get("id")) for record in records}
+        ),
+        ast_nodes=sum(record.kind not in {None, "file", "document"} for record in records),
+        truncated={"records": False, "paths": False, "ast_nodes": False, "metadata_bytes": False},
+        caps={"records": len(records), "paths": None, "ast_nodes": None, "metadata_bytes": None},
     )

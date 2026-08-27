@@ -147,7 +147,7 @@ def test_repl_error_hint_for_str_format():
 
     hint = repl_error_hint(
         'q = ("{\\n  \\"classes\\": []}").format(path=p)\n',
-        'KeyError: \'\\n  "classes"\'',
+        "KeyError: '\\n  \"classes\"'",
     )
     assert hint is not None
     assert "f-string" in hint

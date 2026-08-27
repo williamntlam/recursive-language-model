@@ -26,8 +26,8 @@ Startup refusals:
 
 ## Selectable execution architectures
 
-`ask` and `research` accept `--architecture direct|planned` (or
-`architecture = "direct"` / `"planned"` in configuration). `direct` is the
+`ask` and `research` accept `--architecture direct|planned|planned_waves` (or
+`architecture = "direct"`, `"planned"`, or `"planned_waves"` in configuration). `direct` is the
 default root-loop workflow. `--planner-enabled` and `planner_enabled = true`
 remain compatibility aliases for `planned`.
 
@@ -60,6 +60,14 @@ Malformed or failed planner output falls back to the normal staged REPL, but
 the REPL is restricted to all records in the already-built manifest. It does
 not silently regain full-domain access. Planning events record only counts,
 route totals, digests, and truncation/cap metadata.
+
+### `planned_waves`: complete metadata coverage over time
+
+`planned_waves` writes a complete local, source-free census, then greedily groups
+record metadata into token-safe planner shards. Rejected shards are marked
+`unplannable`; they never reopen the full repository. Selected work produces
+append-only coverage and finding artifacts, then compact findings are reduced in
+bounded, source-free batches before final rendering.
 
 ## Code extraction
 

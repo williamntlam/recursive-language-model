@@ -15,7 +15,7 @@ from rlm.errors import BudgetExhaustedError, StartupError
 from rlm.ipc import read_msg, write_msg
 from rlm.repl_ns import DEFAULT_CELL_CPU_TIMEOUT_S, SubcallHandler
 
-IMAGE_TAG = "rlm-repl:0.1.14"
+IMAGE_TAG = "rlm-repl:0.1.16"
 
 # Peer closed the LM socket (cell timed out, container died, or host execute aborted).
 _PEER_GONE = (BrokenPipeError, ConnectionError, ConnectionResetError)
@@ -122,7 +122,15 @@ class CallbackServer(threading.Thread):
                         req.get("prompts") or [], model=req.get("model")
                     )
                 elif typ == "rlm_query":
-                    value = self.handler.rlm_query(req.get("prompt", ""), model=req.get("model"))
+                    targets = req.get("targets")
+                    if targets is None:
+                        value = self.handler.rlm_query(
+                            req.get("prompt", ""), model=req.get("model")
+                        )
+                    else:
+                        value = self.handler.rlm_query(
+                            req.get("prompt", ""), model=req.get("model"), targets=targets
+                        )
                 elif typ == "rlm_query_batched":
                     value = self.handler.rlm_query_batched(
                         req.get("prompts") or [], model=req.get("model")
@@ -184,6 +192,7 @@ class DockerEnv:
         workspace: Path,
         mode: str,
         query: str,
+        targets: list[dict] | None = None,
         max_stdout_chars: int = 4000,
         cell_timeout_s: float | None = DEFAULT_CELL_CPU_TIMEOUT_S,
         exec_wait_s: float | None = None,
@@ -245,6 +254,8 @@ class DockerEnv:
                     "type": "init",
                     "query": query,
                     "mode": mode,
+                    "init_version": 2,
+                    "targets": targets,
                     "max_stdout_chars": max_stdout_chars,
                     "cell_timeout_s": cell_timeout_s
                     if cell_timeout_s is not None

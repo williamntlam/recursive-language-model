@@ -73,6 +73,12 @@ def load_run(run_dir: Path) -> dict[str, Any]:
                 obj = json.loads(line)
                 if isinstance(obj, dict):
                     trace.append(obj)
+    planned_waves: dict[str, Any] = {}
+    planned_path = run_dir / "artifacts" / "planned-waves-summary.json"
+    if planned_path.is_file():
+        loaded = json.loads(planned_path.read_text(encoding="utf-8"))
+        if isinstance(loaded, dict):
+            planned_waves = loaded
     return {
         "dir": run_dir,
         "meta": meta,
@@ -81,6 +87,7 @@ def load_run(run_dir: Path) -> dict[str, Any]:
         "events": events,
         "trace": trace,
         "complete": answer is not None,
+        "planned_waves": planned_waves,
     }
 
 
@@ -110,6 +117,7 @@ def render_report(run: dict[str, Any]) -> str:
     timeline = "\n".join(_event_card(ev, i) for i, ev in enumerate(events))
     trace_overview = _trace_overview(run.get("trace", []))
     trace_tree = _trace_tree(run.get("trace", []), run["dir"], meta)
+    wave_coverage = _planned_waves_coverage(run.get("planned_waves") or {})
     if not events:
         timeline = '<p class="muted">No events recorded.</p>'
 
@@ -140,6 +148,7 @@ def render_report(run: dict[str, Any]) -> str:
   {answer_html}
   {trace_overview}
   {trace_tree}
+  {wave_coverage}
   <section>
     <h2>Timeline</h2>
     <p class="muted">Indent is recursion depth. Parent <code>hist</code>
@@ -156,6 +165,23 @@ def render_report(run: dict[str, Any]) -> str:
 </body>
 </html>
 """
+
+
+def _planned_waves_coverage(summary: dict[str, Any]) -> str:
+    coverage = summary.get("coverage")
+    if not isinstance(coverage, dict):
+        return ""
+    chips = " ".join(
+        f'<span class="chip">{escape(str(status))}: {escape(str(count))}</span>'
+        for status, count in sorted(coverage.items())
+    )
+    incomplete = "incomplete" if summary.get("incomplete") else "complete"
+    count = escape(str(summary.get("record_count", 0)))
+    return (
+        "<section><h2>Planned-wave coverage</h2>"
+        f'<p class="muted">{escape(incomplete)} · {count} records</p>'
+        f'<div class="chips">{chips}</div></section>'
+    )
 
 
 def _trace_overview(records: list[dict[str, Any]]) -> str:

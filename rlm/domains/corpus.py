@@ -146,7 +146,7 @@ class Corpus:
         self.targets = self.normalize_targets(targets) if targets is not None else None
 
     def normalize_targets(self, targets: list[dict] | None) -> list[dict]:
-        if not isinstance(targets, list) or not targets:
+        if not isinstance(targets, list):
             raise ValueError("corpus.explore targets must be a non-empty list of target records.")
         normalized: list[dict] = []
         for item in targets:

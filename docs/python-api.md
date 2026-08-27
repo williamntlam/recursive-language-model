@@ -35,8 +35,10 @@ RLM(
     verbose: bool | None = None,
     trace_capture: str | None = None,
     extra_instructions: list[str] | None = None,
-    architecture: str | None = None,         # "direct" (default) | "planned"
+    architecture: str | None = None,         # "direct" (default) | "planned" | "planned_waves"
     planner_enabled: bool | None = None,      # compatibility alias for planned
+    planner_shard_target_tokens: int | None = None,
+    reduction_target_tokens: int | None = None,
     config_path: str | Path | None = None,
 )
 ```
@@ -49,6 +51,10 @@ For `ask_repo` and `research`, pass `architecture="planned"` to use the
 deterministic scope-and-plan workflow, or leave the default `"direct"` for the
 normal REPL-led workflow. `planner_enabled=True` is retained as a compatibility
 alias for `architecture="planned"`.
+
+Pass `architecture="planned_waves"` for a complete source-free census and
+multiple bounded planner shards. Its coverage artifacts make unselected,
+unplannable, failed, and budget/timeout-skipped records explicit.
 
 Internal-only (tests): `_client` and `_env_factory` inject `FakeClient` / `FakeEnv`. Do not use them in application code.
 

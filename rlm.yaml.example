@@ -15,7 +15,9 @@ log_dir: .rlm/logs
 verbose: false
 # metadata is safe default; content writes capped, redacted local prompt/output artifacts.
 trace_capture: metadata
-# Execution architecture for repository/corpus work: direct (default) or planned.
+# Execution architecture: direct (default), planned, or planned_waves.
 architecture: direct
 # Compatibility alias for architecture: planned.
+# planner_shard_target_tokens: 12000
+# reduction_target_tokens: 12000
 planner_enabled: false

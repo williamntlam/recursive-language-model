@@ -250,7 +250,7 @@ class Repo:
 
     def normalize_targets(self, targets: list[dict] | None) -> list[dict]:
         """Validate a child target manifest without returning source content."""
-        if not isinstance(targets, list) or not targets:
+        if not isinstance(targets, list):
             raise ValueError("repo.explore targets must be a non-empty list of target records.")
         normalized: list[dict] = []
         for item in targets:
